@@ -37,6 +37,19 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
 
+      - name: Set versionCode from run number
+        run: |
+          VERSION_CODE=$((61 + ${{ github.run_number }}))
+          echo "Setting versionCode to $VERSION_CODE"
+          node -e "
+            const fs = require('fs');
+            const p = 'artifacts/tamil-ai-chat/app.json';
+            const j = JSON.parse(fs.readFileSync(p,'utf8'));
+            j.expo.android.versionCode = $VERSION_CODE;
+            fs.writeFileSync(p, JSON.stringify(j, null, 2));
+            console.log('versionCode set to', j.expo.android.versionCode);
+          "
+
       - name: Fetch custom app icon from Cloudinary
         env:
           CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
