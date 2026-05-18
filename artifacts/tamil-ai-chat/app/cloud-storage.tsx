@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import * as Clipboard from 'expo-clipboard';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Image, Modal, Dimensions, ActivityIndicator,
-  Alert, RefreshControl,
+  Alert, RefreshControl, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -68,6 +69,7 @@ const CATEGORIES = [
 ];
 
 const APP_ICON_KEY = 'my_girls_app_icons';
+const CLOUD_SECRETS_KEY = 'my_girls_cloud_secrets';
 
 export default function CloudStorageScreen() {
   const router = useRouter();
@@ -83,6 +85,13 @@ export default function CloudStorageScreen() {
   const [uploadingIcon, setUploadingIcon] = useState(false);
   const [appIcons, setAppIcons] = useState<CloudImage[]>([]);
 
+  const [secretsModal, setSecretsModal] = useState(false);
+  const [cloudName, setCloudName] = useState('');
+  const [cloudApiKey, setCloudApiKey] = useState('');
+  const [cloudApiSecret, setCloudApiSecret] = useState('');
+  const [secretsSaved, setSecretsSaved] = useState(false);
+  const [savingSecrets, setSavingSecrets] = useState(false);
+
   const loadLocalImages = useCallback(async () => {
     try {
       const raw = await AsyncStorage.getItem(LOCAL_KEY);
@@ -94,8 +103,48 @@ export default function CloudStorageScreen() {
       const icons: CloudImage[] = raw2 ? JSON.parse(raw2) : [];
       setAppIcons(icons);
     } catch {}
+    try {
+      const raw3 = await AsyncStorage.getItem(CLOUD_SECRETS_KEY);
+      if (raw3) {
+        const s = JSON.parse(raw3);
+        if (s.cloudName) setCloudName(s.cloudName);
+        if (s.cloudApiKey) setCloudApiKey(s.cloudApiKey);
+        if (s.cloudApiSecret) setCloudApiSecret(s.cloudApiSecret);
+        setSecretsSaved(!!(s.cloudName && s.cloudApiKey && s.cloudApiSecret));
+      }
+    } catch {}
     setLoading(false);
     setRefreshing(false);
+  }, []);
+
+  const saveSecrets = useCallback(async () => {
+    if (!cloudName.trim() || !cloudApiKey.trim() || !cloudApiSecret.trim()) {
+      Alert.alert('பிழை', 'மூன்று fields-உம் fill பண்ணுங்க');
+      return;
+    }
+    setSavingSecrets(true);
+    try {
+      await AsyncStorage.setItem(CLOUD_SECRETS_KEY, JSON.stringify({
+        cloudName: cloudName.trim(),
+        cloudApiKey: cloudApiKey.trim(),
+        cloudApiSecret: cloudApiSecret.trim(),
+      }));
+      setSecretsSaved(true);
+      setSecretsModal(false);
+      Alert.alert('✅ Saved!', 'Cloud secrets securely saved ஆனது!');
+    } catch {
+      Alert.alert('பிழை', 'Save பண்ண முடியல');
+    } finally {
+      setSavingSecrets(false);
+    }
+  }, [cloudName, cloudApiKey, cloudApiSecret]);
+
+  const clearSecrets = useCallback(async () => {
+    await AsyncStorage.removeItem(CLOUD_SECRETS_KEY);
+    setCloudName(''); setCloudApiKey(''); setCloudApiSecret('');
+    setSecretsSaved(false);
+    setSecretsModal(false);
+    Alert.alert('🗑️ Cleared', 'Cloud secrets delete ஆனது');
   }, []);
 
   const uploadAppIcon = useCallback(async () => {
@@ -251,6 +300,9 @@ export default function CloudStorageScreen() {
               ? <ActivityIndicator color="#fff" size="small" />
               : <Text style={styles.syncBtnTxt}>🔄 Sync</Text>
             }
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.secretBtn} onPress={() => setSecretsModal(true)}>
+            <Text style={styles.secretBtnTxt}>{secretsSaved ? '🔐' : '🔓'}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/settings')}>
             <Text style={styles.headerGear}>⚙️</Text>
@@ -437,6 +489,105 @@ export default function CloudStorageScreen() {
         )}
       </Modal>
 
+      {/* ☁️ Cloud Secret Box Modal */}
+      <Modal visible={secretsModal} transparent animationType="slide" onRequestClose={() => setSecretsModal(false)}>
+        <View style={styles.secOverlay}>
+          <View style={styles.secBox}>
+            <View style={styles.secHeaderRow}>
+              <Text style={styles.secTitle}>☁️ Cloud Secret Box</Text>
+              <TouchableOpacity onPress={() => setSecretsModal(false)}>
+                <Text style={styles.secClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {secretsSaved && (
+              <View style={styles.secSavedBanner}>
+                <Text style={styles.secSavedTxt}>🔐 Secrets saved & ready!</Text>
+              </View>
+            )}
+
+            <Text style={styles.secInfo}>
+              Cloudinary credentials-ஐ securely app-ல் store பண்ணு.{'\n'}
+              cloudinary.com → Dashboard-ல் பார்க்கலாம்.
+            </Text>
+
+            {/* Cloud Name */}
+            <Text style={styles.secLabel}>☁️ Cloud Name</Text>
+            <View style={styles.secInputRow}>
+              <TextInput
+                style={styles.secInput}
+                value={cloudName}
+                onChangeText={setCloudName}
+                placeholder="e.g. dazmrxsyc"
+                placeholderTextColor="#555"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {cloudName.length > 0 && (
+                <TouchableOpacity style={styles.secCopyBtn} onPress={async () => { await Clipboard.setStringAsync(cloudName); Alert.alert('📋 Copied!', 'Cloud Name copied'); }}>
+                  <Text style={styles.secCopyTxt}>📋</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* API Key */}
+            <Text style={styles.secLabel}>🔑 API Key</Text>
+            <View style={styles.secInputRow}>
+              <TextInput
+                style={styles.secInput}
+                value={cloudApiKey}
+                onChangeText={setCloudApiKey}
+                placeholder="123456789012345"
+                placeholderTextColor="#555"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="numeric"
+              />
+              {cloudApiKey.length > 0 && (
+                <TouchableOpacity style={styles.secCopyBtn} onPress={async () => { await Clipboard.setStringAsync(cloudApiKey); Alert.alert('📋 Copied!', 'API Key copied'); }}>
+                  <Text style={styles.secCopyTxt}>📋</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* API Secret */}
+            <Text style={styles.secLabel}>🔒 API Secret</Text>
+            <View style={styles.secInputRow}>
+              <TextInput
+                style={styles.secInput}
+                value={cloudApiSecret}
+                onChangeText={setCloudApiSecret}
+                placeholder="xxxxxxxxxxxxxxxxxxxxxxxx"
+                placeholderTextColor="#555"
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+              />
+              {cloudApiSecret.length > 0 && (
+                <TouchableOpacity style={styles.secCopyBtn} onPress={async () => { await Clipboard.setStringAsync(cloudApiSecret); Alert.alert('📋 Copied!', 'API Secret copied'); }}>
+                  <Text style={styles.secCopyTxt}>📋</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Buttons */}
+            <View style={styles.secBtns}>
+              {secretsSaved && (
+                <TouchableOpacity style={styles.secClearBtn} onPress={() => Alert.alert('Delete?', 'Secrets delete பண்ணட்டுமா?', [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: clearSecrets }])}>
+                  <Text style={styles.secClearTxt}>🗑 Clear</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.secSaveBtn} onPress={saveSecrets} disabled={savingSecrets}>
+                {savingSecrets
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={styles.secSaveTxt}>💾 Save Secrets</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Custom delete confirm (Alert blocked in Chrome web) */}
       {deleteConfirm && (
         <View style={styles.confirmOverlay}>
@@ -602,4 +753,66 @@ const styles = StyleSheet.create({
   },
   appIconDeleteTxt: { fontSize: 13 },
   appIconDate: { color: '#888', fontSize: 10, marginTop: 4, textAlign: 'center' },
+
+  secretBtn: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  secretBtnTxt: { fontSize: 20 },
+
+  secOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.85)',
+    justifyContent: 'flex-end',
+  },
+  secBox: {
+    backgroundColor: '#111827', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, paddingBottom: 40,
+  },
+  secHeaderRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 14,
+  },
+  secTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+  secClose: { color: '#9ca3af', fontSize: 22, fontWeight: 'bold', padding: 4 },
+  secSavedBanner: {
+    backgroundColor: '#064e3b', borderRadius: 10,
+    paddingVertical: 8, paddingHorizontal: 14,
+    marginBottom: 14, borderWidth: 1, borderColor: '#10b981',
+  },
+  secSavedTxt: { color: '#10b981', fontWeight: '700', fontSize: 13 },
+  secInfo: {
+    color: '#6b7280', fontSize: 12, lineHeight: 18,
+    marginBottom: 18, backgroundColor: '#1f2937',
+    borderRadius: 10, padding: 12,
+  },
+  secLabel: { color: '#9ca3af', fontSize: 12, fontWeight: '700', marginBottom: 6, letterSpacing: 0.5 },
+  secInputRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#1f2937', borderRadius: 12,
+    borderWidth: 1, borderColor: '#374151',
+    marginBottom: 14,
+  },
+  secInput: {
+    flex: 1, color: '#e5e7eb', fontSize: 14,
+    paddingHorizontal: 14, paddingVertical: 13,
+    fontFamily: 'monospace',
+  },
+  secCopyBtn: {
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderLeftWidth: 1, borderLeftColor: '#374151',
+  },
+  secCopyTxt: { fontSize: 18 },
+  secBtns: { flexDirection: 'row', gap: 12, marginTop: 6 },
+  secClearBtn: {
+    flex: 1, backgroundColor: '#374151', borderRadius: 12,
+    paddingVertical: 14, alignItems: 'center',
+    borderWidth: 1, borderColor: '#c62828',
+  },
+  secClearTxt: { color: '#f87171', fontWeight: '700', fontSize: 14 },
+  secSaveBtn: {
+    flex: 2, backgroundColor: '#0d6e7a', borderRadius: 12,
+    paddingVertical: 14, alignItems: 'center',
+  },
+  secSaveTxt: { color: '#fff', fontWeight: '800', fontSize: 15 },
 });
