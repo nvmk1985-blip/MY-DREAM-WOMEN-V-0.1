@@ -70,9 +70,12 @@ jobs:
         working-directory: artifacts/tamil-ai-chat
         env:
           EXPO_PUBLIC_API_URL: https://my-girls-1-5.onrender.com
+          EXPO_NO_TELEMETRY: 1
+          CI: 1
         run: |
-          npx expo prebuild --platform android --non-interactive --clean 2>&1
-          echo "Android project generated:"
+          # Skip the "install updated dependencies?" prompt
+          npx expo prebuild --platform android --non-interactive --skip-dependency-update expo,react,react-native --clean 2>&1
+          echo "=== Android project generated ==="
           ls android/
 
       - name: Build APK with Gradle
