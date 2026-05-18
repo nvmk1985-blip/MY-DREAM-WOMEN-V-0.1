@@ -32,6 +32,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.smk1.tamilaichat",
+      "versionCode": 62,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "android.permission.INTERNET",
