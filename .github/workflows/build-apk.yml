@@ -39,7 +39,6 @@ jobs:
       - name: Set versionCode from run number
         run: |
           VERSION_CODE=$((61 + ${{ github.run_number }}))
-          echo "Setting versionCode to $VERSION_CODE"
           node -e "
             const fs = require('fs');
             const p = 'artifacts/tamil-ai-chat/app.json';
@@ -49,30 +48,25 @@ jobs:
             console.log('versionCode set to', j.expo.android.versionCode);
           "
 
-      - name: Link Expo project to current account
+      - name: Link EAS project to current account
         working-directory: artifacts/tamil-ai-chat
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           export EXPO_TOKEN=$(echo "$EXPO_TOKEN" | tr -d '[:space:]')
-          eas whoami
-          # Re-init project under current account (non-interactive)
-          eas init --id "" --force --non-interactive 2>/dev/null || true
-          # If init fails, patch app.json to remove old projectId so EAS creates new one
+          echo "Logged in as: $(eas whoami)"
+          # Remove old projectId so EAS links to current account
           node -e "
             const fs = require('fs');
-            const p = 'app.json';
-            const j = JSON.parse(fs.readFileSync(p,'utf8'));
-            if (j.expo.extra && j.expo.extra.eas) {
-              delete j.expo.extra.eas.projectId;
-            }
-            fs.writeFileSync(p, JSON.stringify(j, null, 2));
-            console.log('Cleared old projectId from app.json');
+            const j = JSON.parse(fs.readFileSync('app.json','utf8'));
+            if (j.expo.extra && j.expo.extra.eas) delete j.expo.extra.eas.projectId;
+            fs.writeFileSync('app.json', JSON.stringify(j, null, 2));
+            console.log('Cleared old projectId');
           "
-          # Create/link project in current account
-          eas init --non-interactive 2>&1 | tee /tmp/eas-init.log || true
-          cat /tmp/eas-init.log
-          cat app.json | grep -A3 projectId || true
+          # Init/link under current account
+          eas init --non-interactive 2>&1 || true
+          echo "New app.json projectId:"
+          node -e "const j=JSON.parse(require('fs').readFileSync('app.json','utf8'));console.log(j.expo?.extra?.eas?.projectId||'none');"
 
       - name: Fetch custom app icon from Cloudinary
         env:
@@ -83,21 +77,15 @@ jobs:
           ICON_URL=$(curl -sf -u "$CLOUDINARY_API_KEY:$CLOUDINARY_API_SECRET" \
             "https://api.cloudinary.com/v1_1/$CLOUDINARY_CLOUD_NAME/resources/image?prefix=my-girls/app-icon/&type=upload&max_results=1" \
             | node -e "
-              const d=[];
-              process.stdin.on('data',c=>d.push(c));
-              process.stdin.on('end',()=>{
-                try {
-                  const r=JSON.parse(d.join(''));
-                  if(r.resources&&r.resources.length>0) console.log(r.resources[0].secure_url);
-                } catch(e){}
-              });" 2>/dev/null || true)
+              const d=[];process.stdin.on('data',c=>d.push(c));
+              process.stdin.on('end',()=>{try{const r=JSON.parse(d.join(''));if(r.resources&&r.resources.length>0)console.log(r.resources[0].secure_url);}catch(e){}});
+            " 2>/dev/null || true)
           if [ -n "$ICON_URL" ]; then
-            echo "Custom icon found: $ICON_URL"
             curl -sL "$ICON_URL" -o artifacts/tamil-ai-chat/assets/images/icon.png
             curl -sL "$ICON_URL" -o artifacts/tamil-ai-chat/assets/images/adaptive-icon.png
-            echo "✅ icon.png replaced"
+            echo "✅ Custom icon applied"
           else
-            echo "No custom icon — using default"
+            echo "Using default icon"
           fi
 
       - name: Build APK (EAS local)
@@ -108,21 +96,17 @@ jobs:
         run: |
           export EXPO_TOKEN=$(echo "$EXPO_TOKEN" | tr -d '[:space:]')
           eas build --platform android --profile preview --local --non-interactive 2>&1 | tee /tmp/build.log
-          # EAS local prints the APK path in the last lines
-          APK=$(grep -oE '[^ ]+\.apk' /tmp/build.log | grep -v node_modules | tail -1)
-          # Fallback: find by size (largest APK = real one)
-          if [ -z "$APK" ] || [ ! -f "$APK" ] || [ "$(stat -c%s "$APK" 2>/dev/null || echo 0)" -lt 1000000 ]; then
-            APK=$(find /tmp /home/runner/work -name "*.apk" 2>/dev/null \
-              | grep -v "node_modules\|\.git\|public/" \
-              | while read f; do echo "$(stat -c%s "$f" 2>/dev/null || echo 0) $f"; done \
-              | sort -rn | head -1 | awk '{print $2}')
-          fi
+          # Find APK — largest file wins
+          APK=$(find /tmp /home/runner/work -name "*.apk" 2>/dev/null \
+            | grep -v "node_modules\|\.git\|public/" \
+            | while read f; do sz=$(stat -c%s "$f" 2>/dev/null||echo 0); echo "$sz $f"; done \
+            | sort -rn | awk 'NR==1{print $2}')
           echo "APK: $APK"
           SIZE=$(stat -c%s "$APK" 2>/dev/null || echo 0)
           echo "SIZE: $SIZE bytes"
           if [ "$SIZE" -lt 1000000 ]; then
-            echo "❌ APK too small — build failed"
-            tail -80 /tmp/build.log
+            echo "❌ Build failed — APK too small"
+            tail -60 /tmp/build.log
             exit 1
           fi
           echo "APK_FILE=$APK" >> $GITHUB_ENV
