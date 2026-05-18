@@ -229,8 +229,16 @@ export default function GalleryScreen() {
       const fname = asset.filename || `file_${i + 1}`;
       let cachedTmp: string | null = null;
       try {
-        const info   = await MediaLibrary.getAssetInfoAsync(asset);
-        const srcUri = info.localUri ?? info.uri ?? asset.uri;
+        // getAssetInfoAsync fails for screenshots/Chrome downloads (ExifInterface restricted)
+        // Fall back to basic asset URI to avoid blocking the upload
+        let localUri = asset.uri;
+        try {
+          const info = await MediaLibrary.getAssetInfoAsync(asset);
+          localUri = info.localUri ?? info.uri ?? asset.uri;
+        } catch {
+          localUri = asset.uri;
+        }
+        const srcUri = localUri;
         if (!srcUri) throw new Error('URI கிடைக்கல');
         const mime   = asset.mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
 
