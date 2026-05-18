@@ -73,8 +73,13 @@ jobs:
           EXPO_NO_TELEMETRY: 1
           CI: 1
         run: |
-          # Skip the "install updated dependencies?" prompt
-          npx expo prebuild --platform android --non-interactive --skip-dependency-update expo,react,react-native --clean 2>&1
+          # Pipe 'yes' to auto-accept any interactive prompts (e.g. "Install updated deps?")
+          yes | npx expo prebuild --platform android --clean 2>&1 || true
+          # Verify android dir was created
+          if [ ! -d android ]; then
+            echo "❌ android/ directory not created — prebuild failed"
+            exit 1
+          fi
           echo "=== Android project generated ==="
           ls android/
 
