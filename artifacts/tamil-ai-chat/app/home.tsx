@@ -93,7 +93,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
-      <StatusBar backgroundColor="#000" barStyle="light-content" />
+      <StatusBar backgroundColor="#075E54" barStyle="light-content" />
 
       {/* Cover image — only show if custom image set, else compact header bar */}
       {coverUri ? (
