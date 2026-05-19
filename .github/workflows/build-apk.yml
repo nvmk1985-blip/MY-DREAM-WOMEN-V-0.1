@@ -73,9 +73,7 @@ jobs:
           EXPO_NO_TELEMETRY: 1
           CI: 1
         run: |
-          # Pipe 'yes' to auto-accept any interactive prompts (e.g. "Install updated deps?")
           yes | npx expo prebuild --platform android --clean 2>&1 || true
-          # Verify android dir was created
           if [ ! -d android ]; then
             echo "❌ android/ directory not created — prebuild failed"
             exit 1
@@ -86,26 +84,34 @@ jobs:
       - name: Build APK with Gradle
         working-directory: artifacts/tamil-ai-chat/android
         run: |
+          set -o pipefail
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon 2>&1 | tee /tmp/gradle.log
+          ./gradlew assembleDebug --no-daemon 2>&1 | tee /tmp/gradle.log
           echo "=== Build output ==="
           find . -name "*.apk" | grep -v "node_modules\|\.git" | while read f; do
-            sz=$(stat -c%s "$f" 2>/dev/null||echo 0)
-            echo "$sz $f"
+            sz=$(stat -c%s "$f" 2>/dev/null || echo 0)
+            echo "$sz bytes — $f"
           done | sort -rn
 
       - name: Locate and validate APK
         run: |
-          APK=$(find artifacts/tamil-ai-chat/android -name "*.apk" 2>/dev/null \
-            | grep -v "node_modules\|\.git" \
-            | while read f; do echo "$(stat -c%s "$f" 2>/dev/null||echo 0) $f"; done \
-            | sort -rn | awk 'NR==1{print $2}')
-          echo "APK: $APK"
+          APK=$(find artifacts/tamil-ai-chat/android/app/build/outputs/apk/debug \
+            -name "*.apk" 2>/dev/null \
+            | head -1)
+          if [ -z "$APK" ]; then
+            # Fallback: search broadly
+            APK=$(find artifacts/tamil-ai-chat/android -name "*.apk" 2>/dev/null \
+              | grep -v "node_modules\|\.git" \
+              | while read f; do echo "$(stat -c%s "$f" 2>/dev/null || echo 0) $f"; done \
+              | sort -rn | awk 'NR==1{print $2}')
+          fi
+          echo "APK found: $APK"
           SIZE=$(stat -c%s "$APK" 2>/dev/null || echo 0)
           echo "SIZE: $SIZE bytes"
-          if [ "$SIZE" -lt 1000000 ]; then
-            echo "❌ APK too small or not found"
-            tail -80 /tmp/gradle.log
+          if [ -z "$APK" ] || [ "$SIZE" -lt 1000000 ]; then
+            echo "❌ APK too small or not found (size: $SIZE bytes)"
+            echo "=== Last 100 lines of Gradle log ==="
+            tail -100 /tmp/gradle.log
             exit 1
           fi
           echo "✅ APK ready: $(ls -lh "$APK")"
