@@ -38,7 +38,12 @@
         "android.permission.INTERNET",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO"
       ]
     },
     "web": {
@@ -60,6 +65,14 @@
           "color": "#E91E8C",
           "defaultChannel": "auto-messages",
           "sounds": []
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow My Girls to access your photos and media files.",
+          "savePhotosPermission": "Allow My Girls to save photos and media files.",
+          "isAccessMediaLocationEnabled": true
         }
       ]
     ],
