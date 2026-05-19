@@ -85,25 +85,52 @@ jobs:
         env:
           EXPO_PUBLIC_API_URL: https://my-girls-1-5.onrender.com
           NODE_ENV: production
+          EXPO_NO_TELEMETRY: 1
         run: |
           mkdir -p android/app/src/main/assets
           mkdir -p android/app/src/main/res
-          echo "=== Bundling JavaScript ==="
+          echo "=== Bundling JavaScript (entry: expo-router/entry) ==="
           npx react-native bundle \
             --platform android \
             --dev false \
-            --entry-file index.js \
+            --entry-file node_modules/expo-router/entry.js \
+            --bundle-output android/app/src/main/assets/index.android.bundle \
+            --assets-dest android/app/src/main/res \
+            2>&1 || \
+          npx react-native bundle \
+            --platform android \
+            --dev false \
+            --entry-file node_modules/expo-router/src/entry.js \
             --bundle-output android/app/src/main/assets/index.android.bundle \
             --assets-dest android/app/src/main/res \
             2>&1
-          ls -lh android/app/src/main/assets/
-          echo "✅ JS bundle created"
+          if [ -f android/app/src/main/assets/index.android.bundle ]; then
+            ls -lh android/app/src/main/assets/
+            echo "✅ JS bundle created"
+          else
+            echo "❌ Bundle not created — trying expo export approach"
+            npx expo export --platform android --output-dir /tmp/expo-export 2>&1 || true
+            ls /tmp/expo-export/ 2>/dev/null || true
+            # Copy bundle if found
+            BUNDLE=$(find /tmp/expo-export -name "*.bundle" 2>/dev/null | head -1)
+            if [ -n "$BUNDLE" ]; then
+              cp "$BUNDLE" android/app/src/main/assets/index.android.bundle
+              echo "✅ Bundle from expo export: $BUNDLE"
+            else
+              echo "❌ Could not create bundle"
+              exit 1
+            fi
+          fi
 
       - name: Build APK with Gradle
         working-directory: artifacts/tamil-ai-chat/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon 2>&1 | tee /tmp/gradle.log
+          # Tell Gradle NOT to run bundling again (we pre-bundled)
+          ./gradlew assembleDebug \
+            -PbundleInDebug=false \
+            --no-daemon \
+            2>&1 | tee /tmp/gradle.log
           echo "=== APK files found ==="
           find . -name "*.apk" | grep -v node_modules | while read f; do
             echo "$(stat -c%s "$f") bytes — $f"
@@ -135,7 +162,7 @@ jobs:
           TAG="v${{ github.run_number }}"
           gh release create "$TAG" "$APK_NAME" \
             --title "My Girls — Build ${{ github.run_number }}" \
-            --notes "Standalone APK — works on mobile network, no PC needed. Build ${{ github.run_number }}." \
+            --notes "Standalone APK — works on mobile network. Build ${{ github.run_number }}." \
             --latest \
             --repo ${{ github.repository }}
           echo "✅ https://github.com/${{ github.repository }}/releases/download/$TAG/$APK_NAME"
