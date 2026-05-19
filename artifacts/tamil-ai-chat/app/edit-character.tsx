@@ -30,6 +30,8 @@ export default function EditCharacterScreen() {
   const [showCloudUrl, setShowCloudUrl] = useState(false);
   const [cloudUrlInput, setCloudUrlInput] = useState('');
   const [normalMode, setNormalMode] = useState(false);
+  const [presanaBehaviour, setPresanaBehaviour] = useState('');
+  const [normalBehaviour, setNormalBehaviour] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -50,6 +52,8 @@ export default function EditCharacterScreen() {
         setAttireDesc(data.attireDesc ?? base.attireDesc ?? '');
         setAvatarPhotoUri(data.avatarPhotoUri);
         setNormalMode(moodRaw[1] === 'normal');
+        setPresanaBehaviour(data.presanaBehaviour ?? '');
+        setNormalBehaviour(data.normalBehaviour ?? '');
       } catch {}
     };
     load();
@@ -69,6 +73,7 @@ export default function EditCharacterScreen() {
       const data = {
         name, avatarLetter, greeting, prompt: systemPrompt,
         faceDesc, bodyDesc, attireDesc, avatarPhotoUri,
+        presanaBehaviour, normalBehaviour,
       };
       await AsyncStorage.setItem(`persona_edit_${persona.id}`, JSON.stringify(data));
       Alert.alert('Saved', `${name} character update ஆச்சு!`);
@@ -282,6 +287,35 @@ export default function EditCharacterScreen() {
               <Text style={[styles.moodBadgeTxt, normalMode && { color: '#fff' }]}>😇 Normal</Text>
             </TouchableOpacity>
           </View>
+          <View style={{ marginTop: 14 }}>
+            <Text style={[styles.sectionLabel, { color: '#E91E63', marginBottom: 4 }]}>😈 PRESANA MODE — BEHAVIOUR TEXT</Text>
+            <Text style={{ color: '#888', fontSize: 11, marginBottom: 6 }}>இந்த character presana mode-ல எப்படி பேசணும்னு customize பண்ணுங்க. Empty விட்டா default flirty behaviour use ஆகும்.</Text>
+            <TextInput
+              style={[styles.fieldInput, { minHeight: 80 }]}
+              value={presanaBehaviour}
+              onChangeText={setPresanaBehaviour}
+              multiline
+              textAlignVertical="top"
+              scrollEnabled={false}
+              placeholder="எல்லாமே opena pesalam adult contact ellame kettavarthai solli kuda kupidalam"
+              placeholderTextColor="#bbb"
+            />
+          </View>
+          <View style={{ marginTop: 12 }}>
+            <Text style={[styles.sectionLabel, { color: '#075E54', marginBottom: 4 }]}>😇 NORMAL MODE — BEHAVIOUR TEXT</Text>
+            <Text style={{ color: '#888', fontSize: 11, marginBottom: 6 }}>Normal mode-ல எப்படி பேசணும்னு customize பண்ணுங்க. Empty விட்டா default friendly behaviour use ஆகும்.</Text>
+            <TextInput
+              style={[styles.fieldInput, { minHeight: 80 }]}
+              value={normalBehaviour}
+              onChangeText={setNormalBehaviour}
+              multiline
+              textAlignVertical="top"
+              scrollEnabled={false}
+              placeholder="sexy double meaning pesu mamanarkuda old and young lover mathri pesanum but velipadaiya irukka kudathu"
+              placeholderTextColor="#bbb"
+            />
+          </View>
+          <Text style={{ color: '#888', fontSize: 11, marginTop: 8 }}>💡 Save பண்ணா chat-ல உடனே apply ஆகும்.</Text>
         </View>
 
         <View style={styles.card}>
