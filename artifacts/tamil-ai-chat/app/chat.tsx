@@ -987,7 +987,7 @@ export default function ChatScreen() {
           keyExtractor={item => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.msgList}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+
         />
         {loading && (
           <View style={styles.loadingRow}>
