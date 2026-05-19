@@ -87,22 +87,20 @@ jobs:
           set -o pipefail
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon 2>&1 | tee /tmp/gradle.log
-          echo "=== Build output ==="
+          echo "=== APK files found ==="
           find . -name "*.apk" | grep -v "node_modules\|\.git" | while read f; do
             sz=$(stat -c%s "$f" 2>/dev/null || echo 0)
             echo "$sz bytes — $f"
           done | sort -rn
 
-      - name: Locate and validate APK
+      - name: Locate, validate and copy APK
         run: |
           APK=$(find artifacts/tamil-ai-chat/android/app/build/outputs/apk/debug \
-            -name "*.apk" 2>/dev/null \
-            | head -1)
+            -name "*.apk" 2>/dev/null | head -1)
           if [ -z "$APK" ]; then
-            # Fallback: search broadly
             APK=$(find artifacts/tamil-ai-chat/android -name "*.apk" 2>/dev/null \
               | grep -v "node_modules\|\.git" \
-              | while read f; do echo "$(stat -c%s "$f" 2>/dev/null || echo 0) $f"; done \
+              | while read f; do echo "$(stat -c%s "$f" 2>/dev/null||echo 0) $f"; done \
               | sort -rn | awk 'NR==1{print $2}')
           fi
           echo "APK found: $APK"
@@ -115,18 +113,22 @@ jobs:
             exit 1
           fi
           echo "✅ APK ready: $(ls -lh "$APK")"
-          echo "APK_FILE=$APK" >> $GITHUB_ENV
+          APK_NAME="my-girls-v${{ github.run_number }}.apk"
+          cp "$APK" "$APK_NAME"
+          echo "APK_NAME=$APK_NAME" >> $GITHUB_ENV
+          echo "APK copied to: $APK_NAME ($(stat -c%s "$APK_NAME") bytes)"
 
       - name: Publish APK via GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v${{ github.run_number }}"
-          APK_NAME="my-girls-v${{ github.run_number }}.apk"
-          cp "$APK_FILE" "$APK_NAME"
+          echo "Publishing $APK_NAME as release $TAG"
+          ls -lh "$APK_NAME"
           gh release create "$TAG" "$APK_NAME" \
             --title "My Girls — Build ${{ github.run_number }}" \
             --notes "Direct install APK. Build ${{ github.run_number }}." \
+            --latest \
             --repo ${{ github.repository }}
           echo "✅ DOWNLOAD: https://github.com/${{ github.repository }}/releases/download/$TAG/$APK_NAME"
 
