@@ -80,70 +80,53 @@ jobs:
           fi
           ls android/
 
-      - name: Generate keystore and configure signing
-        working-directory: artifacts/tamil-ai-chat/android
+      - name: Pre-bundle JavaScript into Android assets
+        working-directory: artifacts/tamil-ai-chat
+        env:
+          EXPO_PUBLIC_API_URL: https://my-girls-1-5.onrender.com
+          NODE_ENV: production
         run: |
-          # Generate keystore inside android/app/
-          keytool -genkeypair -v \
-            -keystore app/release.keystore \
-            -alias my-girls \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -storepass mygirls123 -keypass mygirls123 \
-            -dname "CN=MyGirls,OU=App,O=MyGirls,L=Chennai,ST=TN,C=IN"
-          echo "✅ Keystore created"
+          mkdir -p android/app/src/main/assets
+          mkdir -p android/app/src/main/res
+          echo "=== Bundling JavaScript ==="
+          npx react-native bundle \
+            --platform android \
+            --dev false \
+            --entry-file index.js \
+            --bundle-output android/app/src/main/assets/index.android.bundle \
+            --assets-dest android/app/src/main/res \
+            2>&1
+          ls -lh android/app/src/main/assets/
+          echo "✅ JS bundle created"
 
-          # Add signing properties to gradle.properties
-          cat >> gradle.properties << 'EOF'
-          MYAPP_UPLOAD_STORE_FILE=release.keystore
-          MYAPP_UPLOAD_KEY_ALIAS=my-girls
-          MYAPP_UPLOAD_STORE_PASSWORD=mygirls123
-          MYAPP_UPLOAD_KEY_PASSWORD=mygirls123
-          EOF
-          echo "✅ gradle.properties updated"
-
-          # Show what the build.gradle signingConfigs looks like (for debugging)
-          grep -A 20 "signingConfigs" app/build.gradle || echo "(no signingConfigs block found)"
-
-      - name: Build Release APK
+      - name: Build APK with Gradle
         working-directory: artifacts/tamil-ai-chat/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon \
-            -PMYAPP_UPLOAD_STORE_FILE=release.keystore \
-            -PMYAPP_UPLOAD_KEY_ALIAS=my-girls \
-            -PMYAPP_UPLOAD_STORE_PASSWORD=mygirls123 \
-            -PMYAPP_UPLOAD_KEY_PASSWORD=mygirls123 \
-            2>&1 | tee /tmp/gradle.log || {
-            echo "=== GRADLE FAILED - Last 80 lines ==="
-            tail -80 /tmp/gradle.log
-            exit 1
-          }
-          echo "=== APK files ==="
+          ./gradlew assembleDebug --no-daemon 2>&1 | tee /tmp/gradle.log
+          echo "=== APK files found ==="
           find . -name "*.apk" | grep -v node_modules | while read f; do
             echo "$(stat -c%s "$f") bytes — $f"
           done | sort -rn
 
       - name: Locate, validate and copy APK
         run: |
-          APK=$(find artifacts/tamil-ai-chat/android/app/build/outputs/apk/release \
-            -name "*.apk" 2>/dev/null | head -1)
-          if [ -z "$APK" ]; then
-            APK=$(find artifacts/tamil-ai-chat/android -name "*.apk" 2>/dev/null \
-              | grep -v node_modules \
-              | while read f; do echo "$(stat -c%s "$f" 2>/dev/null||echo 0) $f"; done \
-              | sort -rn | awk 'NR==1{print $2}')
-          fi
+          APK=$(find artifacts/tamil-ai-chat/android -name "*.apk" 2>/dev/null \
+            | grep -v "node_modules\|\.git" \
+            | while read f; do echo "$(stat -c%s "$f" 2>/dev/null||echo 0) $f"; done \
+            | sort -rn | awk 'NR==1{print $2}')
+          echo "APK found: $APK"
           SIZE=$(stat -c%s "$APK" 2>/dev/null || echo 0)
-          echo "APK: $APK ($SIZE bytes)"
+          echo "SIZE: $SIZE bytes"
           if [ -z "$APK" ] || [ "$SIZE" -lt 1000000 ]; then
-            echo "❌ APK too small — tail of gradle.log:"
+            echo "❌ APK invalid (size: $SIZE bytes)"
             tail -80 /tmp/gradle.log
             exit 1
           fi
+          echo "✅ APK ready: $(ls -lh "$APK")"
           APK_NAME="my-girls-v${{ github.run_number }}.apk"
           cp "$APK" "$APK_NAME"
           echo "APK_NAME=$APK_NAME" >> $GITHUB_ENV
-          echo "✅ $(ls -lh "$APK_NAME")"
 
       - name: Publish APK via GitHub Release
         env:
@@ -152,7 +135,7 @@ jobs:
           TAG="v${{ github.run_number }}"
           gh release create "$TAG" "$APK_NAME" \
             --title "My Girls — Build ${{ github.run_number }}" \
-            --notes "Release APK. Build ${{ github.run_number }}." \
+            --notes "Standalone APK — works on mobile network, no PC needed. Build ${{ github.run_number }}." \
             --latest \
             --repo ${{ github.repository }}
           echo "✅ https://github.com/${{ github.repository }}/releases/download/$TAG/$APK_NAME"
