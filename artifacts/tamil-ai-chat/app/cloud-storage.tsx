@@ -223,11 +223,7 @@ export default function CloudStorageScreen() {
       if (isServer) {
         Alert.alert(
           '⚠️ Server Wake ஆகுது',
-          'Render server sleep mode-ல் இருக்கு.
-
-⏳ 30-60 seconds காத்திரு, பிறகு Retry பண்ணு.
-
-Settings → Custom Server URL-ல் வேற server set பண்ணலாம்.',
+          `Render server sleep mode-ல் இருக்கு.\n\n⏳ 30-60 seconds காத்திரு, பிறகு Retry பண்ணு.\n\nSettings → Custom Server URL-ல் வேற server set பண்ணலாம்.`,
           [
             { text: 'Cancel', style: 'cancel' },
             { text: '🔄 Retry (30s)', onPress: () => setTimeout(() => syncFromCloud(), 30000) },
