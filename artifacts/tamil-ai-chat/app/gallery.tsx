@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { uploadUriToCloudinary, listCloudinaryImages, deleteFromCloudinary } from '../services/api';
 
@@ -128,6 +129,58 @@ export default function GalleryScreen() {
     setDepth(0);
     setCurrentFolder(null);
     loadCloudFiles(undefined);
+  };
+
+  // ── Icons folder: pick with 1:1 crop ─────────────────────────────
+  const pickIconWithCrop = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission வேணும்', 'Gallery access allow பண்ணுங்க');
+      return;
+    }
+    await new Promise(r => setTimeout(r, 300));
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.92,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+
+    setUploading(true);
+    setUploadProgress(0);
+    setUploadTotal(1);
+    try {
+      const folder = currentFolder
+        ? `my-girls/storage/${albumKey}/${currentFolder.id}`
+        : `my-girls/storage/${albumKey}`;
+      const uploaded = await uploadUriToCloudinary(asset.uri, 'image/jpeg', folder);
+      const cloudFile: CloudFile = { url: uploaded.url, public_id: uploaded.public_id };
+
+      const key = filesKey(albumKey, currentFolder?.id);
+      const existing = await AsyncStorage.getItem(key).catch(() => null);
+      const prev: CloudFile[] = existing ? JSON.parse(existing) : [];
+      const updated = [cloudFile, ...prev.filter(f => f.public_id !== cloudFile.public_id)];
+      await AsyncStorage.setItem(key, JSON.stringify(updated));
+      setFiles(updated);
+      setUploadProgress(1);
+
+      Alert.alert(
+        '✅ Icon Upload ஆச்சு!',
+        '1:1 crop பண்ணி Icons folder-ல் save ஆச்சு.\n\nSettings-ல் இந்த icon-ஐ App Icon-ஆ set பண்ணி Build trigger பண்ணலாம்.',
+        [
+          { text: 'OK', style: 'cancel' },
+          { text: '⚙️ Settings-க்கு போ', onPress: () => router.push('/settings') },
+        ],
+      );
+    } catch (e: any) {
+      Alert.alert('Upload பிழை', e?.message || 'மீண்டும் try பண்ணுங்க');
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+      setUploadTotal(0);
+    }
   };
 
   // ── Open phone folder browser ────────────────────────────────────
@@ -418,6 +471,17 @@ export default function GalleryScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Icons folder: special 1:1 crop upload */}
+        {albumKey === 'icons' && (
+          <TouchableOpacity
+            style={s.iconCropBtn}
+            onPress={pickIconWithCrop}
+            disabled={uploading}
+          >
+            <Text style={s.iconCropBtnTxt}>🎨 Gallery-ல் Select → 1:1 Crop → Icons Save</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Sub-folders */}
         {depth === 0 && subFolders.length > 0 && (
           <View style={s.foldersRow}>
@@ -620,6 +684,8 @@ const s = StyleSheet.create({
   uploadBtn:      { flex: 1, backgroundColor: '#E8821A', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   uploadBtnTxt:   { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   newFolderBtn:   { flex: 1, backgroundColor: '#444', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  iconCropBtn:    { marginHorizontal: 14, marginBottom: 10, backgroundColor: '#FF6B35', borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  iconCropBtnTxt: { color: '#fff', fontSize: 14, fontWeight: '800' },
   newFolderTxt:   { color: '#ccc', fontSize: 16, fontWeight: '600' },
   foldersRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 14, paddingBottom: 10 },
   folderChip:     { backgroundColor: '#2a2a2a', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
