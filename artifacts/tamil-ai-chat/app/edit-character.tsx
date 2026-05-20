@@ -101,7 +101,7 @@ export default function EditCharacterScreen() {
           const mime = asset.mimeType || 'image/jpeg';
           const folder = 'my-girls/avatars';
           const cloudUrl = await uploadToCloudinary(asset.base64, mime, folder);
-          setAvatarPhotoUri(cloudUrl);
+          setAvatarPhotoUri(cloudUrl.url);
         } catch {
           Alert.alert('Upload failed', 'Cloud upload தோல்வி — ☁️ Cloud URL option use பண்ணுங்க');
         } finally {
@@ -263,7 +263,7 @@ export default function EditCharacterScreen() {
               <Text style={styles.moodSub}>
                 {normalMode
                   ? 'Friendly-ஆ, clean-ஆ, professional-ஆ பேசுவாங்க'
-                  : 'Flirty, romantic, playful-ஆ பேசுவாங்க (default)'}
+                  : (presanaBehaviour.trim() ? presanaBehaviour.trim() : 'Flirty, romantic, playful-ஆ பேசுவாங்க (default)')}
               </Text>
             </View>
             <Switch
