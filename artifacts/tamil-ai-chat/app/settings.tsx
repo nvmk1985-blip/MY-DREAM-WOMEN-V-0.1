@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Linking, ActivityIndicator, Alert, Image, TextInput,
+  ScrollView, Linking, ActivityIndicator, Alert, Image, TextInput, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -36,6 +36,9 @@ export default function SettingsScreen() {
   const [latestApkUrl, setLatestApkUrl] = useState<string | null>(null);
   const [wakingServer, setWakingServer] = useState(false);
   const [serverStatus, setServerStatus] = useState<'unknown'|'ok'|'sleeping'>('unknown');
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [keyInputVal, setKeyInputVal] = useState('');
+  const [savingKey, setSavingKey] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -99,20 +102,38 @@ export default function SettingsScreen() {
     }
   };
 
+  // GitHub key-ஐ save பண்ணி build start பண்றோம்
+  const saveKeyAndBuild = async () => {
+    const key = keyInputVal.trim();
+    if (!key) { Alert.alert('பிழை', 'GitHub Token உள்ளிடுங்க'); return; }
+    setSavingKey(true);
+    try {
+      const saved = await AsyncStorage.getItem(KEYS_STORAGE).catch(() => null);
+      const parsed: Record<string, string> = saved ? JSON.parse(saved) : {};
+      parsed['github'] = key;
+      await AsyncStorage.setItem(KEYS_STORAGE, JSON.stringify(parsed));
+      setShowKeyModal(false);
+      setKeyInputVal('');
+      // Now trigger build with the saved key
+      await triggerGithubBuildWithToken(key);
+    } catch (e: any) {
+      Alert.alert('Save பிழை', e?.message || 'மீண்டும் try பண்ணுங்க');
+    } finally {
+      setSavingKey(false);
+    }
+  };
+
   // GitHub Actions Build trigger செய்கிறோம்
   const triggerGithubBuild = async () => {
     const token = await getGithubToken();
     if (!token) {
-      Alert.alert(
-        '🔑 GitHub Token தேவை',
-        'Keys & Accounts screen-ல் GitHub Token save பண்ணுங்க, பிறகு trigger ஆகும்.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: '🔑 Keys-க்கு போ', onPress: () => router.push('/keys') },
-        ]
-      );
+      setShowKeyModal(true);
       return;
     }
+    await triggerGithubBuildWithToken(token);
+  };
+
+  const triggerGithubBuildWithToken = async (token: string) => {
 
     setBuildStatus('triggering');
     setBuildMsg('GitHub-ல் build trigger பண்றோம்...');
@@ -315,6 +336,44 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={s.safe}>
       <Stack.Screen options={{ headerShown: false }} />
+
+      {/* GitHub Key Input Modal */}
+      <Modal visible={showKeyModal} transparent animationType="slide" onRequestClose={() => setShowKeyModal(false)}>
+        <View style={s.keyModalOverlay}>
+          <View style={s.keyModalBox}>
+            <Text style={s.keyModalTitle}>🔑 GitHub Token தேவை</Text>
+            <Text style={s.keyModalDesc}>
+              Build trigger பண்ண GitHub Personal Access Token வேணும்.{'\n'}
+              github.com → Settings → Developer settings → Personal access tokens → repo scope
+            </Text>
+            <TextInput
+              style={s.keyModalInput}
+              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+              placeholderTextColor="#555"
+              value={keyInputVal}
+              onChangeText={setKeyInputVal}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry={true}
+              autoFocus
+            />
+            <View style={s.keyModalBtns}>
+              <TouchableOpacity style={s.keyModalCancel} onPress={() => { setShowKeyModal(false); setKeyInputVal(''); }}>
+                <Text style={s.keyModalCancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.keyModalSave, savingKey && { opacity: 0.6 }]}
+                onPress={saveKeyAndBuild}
+                disabled={savingKey}
+              >
+                {savingKey
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={s.keyModalSaveTxt}>💾 Save & Build</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <View style={s.header}>
         <TouchableOpacity onPress={() => router.back()}>
@@ -644,6 +703,29 @@ const s = StyleSheet.create({
   latestApkBannerTitle: { color: '#3fb950', fontSize: 15, fontWeight: '800', marginBottom: 4 },
   latestApkBannerSub: { color: '#8b949e', fontSize: 11, marginBottom: 10 },
   latestApkBannerBtn: { color: '#fff', fontWeight: '700', fontSize: 13, backgroundColor: '#238636', paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20 },
+  keyModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  keyModalBox: {
+    backgroundColor: '#161b22', borderTopLeftRadius: 22, borderTopRightRadius: 22,
+    padding: 24, paddingBottom: 36, borderTopWidth: 1, borderColor: '#30363d',
+  },
+  keyModalTitle: { color: '#e6edf3', fontSize: 18, fontWeight: '800', marginBottom: 8 },
+  keyModalDesc: { color: '#8b949e', fontSize: 12, lineHeight: 18, marginBottom: 16 },
+  keyModalInput: {
+    backgroundColor: '#0d1117', color: '#e6edf3', borderRadius: 10,
+    borderWidth: 1, borderColor: '#388bfd', padding: 14, fontSize: 14,
+    marginBottom: 16, letterSpacing: 1,
+  },
+  keyModalBtns: { flexDirection: 'row', gap: 12 },
+  keyModalCancel: {
+    flex: 1, backgroundColor: '#21262d', borderRadius: 10,
+    paddingVertical: 13, alignItems: 'center',
+  },
+  keyModalCancelTxt: { color: '#8b949e', fontWeight: '700', fontSize: 14 },
+  keyModalSave: {
+    flex: 2, backgroundColor: '#238636', borderRadius: 10,
+    paddingVertical: 13, alignItems: 'center',
+  },
+  keyModalSaveTxt: { color: '#fff', fontWeight: '800', fontSize: 14 },
   wakeBtn: {
     backgroundColor: '#1565C0', borderRadius: 10,
     paddingVertical: 12, alignItems: 'center', marginBottom: 10,
