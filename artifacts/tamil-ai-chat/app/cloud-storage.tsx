@@ -153,6 +153,7 @@ export default function CloudStorageScreen() {
       Alert.alert('Permission வேணும்', 'Gallery access allow பண்ணுங்க');
       return;
     }
+    await new Promise(r => setTimeout(r, 350));
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
