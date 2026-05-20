@@ -577,7 +577,7 @@ export default function ChatScreen() {
       setLoading(false);
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     }
-  }, [input, loading, messages, provider, persona, isOnline, localGemmaPort]);
+  }, [input, loading, messages, provider, persona, isOnline, localGemmaPort, moodMode, presanaBehaviour, normalBehaviour, dialectMode, userName, userBehaviour]);
 
   const handleShowGalleryInChat = async (styleId: string) => {
     if (!persona) return;
