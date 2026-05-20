@@ -218,7 +218,24 @@ export default function CloudStorageScreen() {
       await AsyncStorage.setItem(LOCAL_KEY, JSON.stringify(merged.slice(0, 300)));
       setImages(merged);
     } catch (e: any) {
-      Alert.alert('Sync பிழை', e?.message || 'Cloud sync வேலை செய்யல');
+      const errMsg = e?.message || '';
+      const isServer = errMsg.includes('fetch') || errMsg.includes('network') || errMsg.includes('connect') || errMsg.includes('timeout');
+      if (isServer) {
+        Alert.alert(
+          '⚠️ Server Wake ஆகுது',
+          'Render server sleep mode-ல் இருக்கு.
+
+⏳ 30-60 seconds காத்திரு, பிறகு Retry பண்ணு.
+
+Settings → Custom Server URL-ல் வேற server set பண்ணலாம்.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: '🔄 Retry (30s)', onPress: () => setTimeout(() => syncFromCloud(), 30000) },
+          ]
+        );
+      } else {
+        Alert.alert('Sync பிழை', errMsg || 'Cloud sync வேலை செய்யல');
+      }
     } finally {
       setFetchingCloud(false);
     }
