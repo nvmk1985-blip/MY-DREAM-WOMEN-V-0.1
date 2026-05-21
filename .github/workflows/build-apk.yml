@@ -46,35 +46,30 @@ jobs:
             console.log('versionCode set to', j.expo.android.versionCode);
           "
 
-      - name: Fetch custom app icon from Cloudinary
+      - name: Apply app icon from Cloudinary (optional override)
         env:
           CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
           CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
           CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
         run: |
-          # Try pinned icon first (my-girls/app-icon/app_icon)
-          PINNED_URL="https://res.cloudinary.com/$CLOUDINARY_CLOUD_NAME/image/upload/my-girls/app-icon/app_icon.png"
-          HTTP_CODE=$(curl -sL -o /tmp/icon_test.png -w "%{http_code}" "$PINNED_URL")
-          if [ "$HTTP_CODE" = "200" ] && [ "$(stat -c%s /tmp/icon_test.png)" -gt 10000 ]; then
-            cp /tmp/icon_test.png artifacts/tamil-ai-chat/assets/images/icon.png
-            cp /tmp/icon_test.png artifacts/tamil-ai-chat/assets/images/adaptive-icon.png
-            echo "✅ Pinned icon applied (app_icon)"
+          ICON_BASE="artifacts/tamil-ai-chat/assets/images"
+          REPO_SIZE=$(stat -c%s "$ICON_BASE/icon.png" 2>/dev/null || echo 0)
+          echo "Repo icon.png size: $REPO_SIZE bytes"
+
+          # Try Cloudinary override — only apply if fetch succeeds AND size differs from repo
+          PINNED="https://res.cloudinary.com/$CLOUDINARY_CLOUD_NAME/image/upload/my-girls/app-icon/app_icon.png"
+          HTTP=$(curl -sL -o /tmp/cld_icon.png -w "%{http_code}" "$PINNED" 2>/dev/null || echo "000")
+          CLD_SIZE=$(stat -c%s /tmp/cld_icon.png 2>/dev/null || echo 0)
+          echo "Cloudinary icon size: $CLD_SIZE bytes (HTTP $HTTP)"
+
+          if [ "$HTTP" = "200" ] && [ "$CLD_SIZE" -gt 50000 ] && [ "$CLD_SIZE" != "$REPO_SIZE" ]; then
+            cp /tmp/cld_icon.png "$ICON_BASE/icon.png"
+            cp /tmp/cld_icon.png "$ICON_BASE/adaptive-icon.png"
+            echo "✅ Cloudinary icon applied (different from repo)"
           else
-            # Fallback: API lookup
-            ICON_URL=$(curl -sf -u "$CLOUDINARY_API_KEY:$CLOUDINARY_API_SECRET" \
-              "https://api.cloudinary.com/v1_1/$CLOUDINARY_CLOUD_NAME/resources/image?prefix=my-girls/app-icon/&type=upload&max_results=1" \
-              | node -e "
-                const d=[];process.stdin.on('data',c=>d.push(c));
-                process.stdin.on('end',()=>{try{const r=JSON.parse(d.join(''));if(r.resources&&r.resources.length>0)console.log(r.resources[0].secure_url);}catch(e){}});
-              " 2>/dev/null || true)
-            if [ -n "$ICON_URL" ]; then
-              curl -sL "$ICON_URL" -o artifacts/tamil-ai-chat/assets/images/icon.png
-              curl -sL "$ICON_URL" -o artifacts/tamil-ai-chat/assets/images/adaptive-icon.png
-              echo "✅ Fallback icon applied from API"
-            else
-              echo "Using default icon"
-            fi
+            echo "✅ Using repo icon (Cloudinary same or unavailable)"
           fi
+          echo "Final icon size: $(stat -c%s $ICON_BASE/icon.png) bytes"
 
       - name: Expo Prebuild
         working-directory: artifacts/tamil-ai-chat
@@ -100,23 +95,20 @@ jobs:
           mkdir -p android/app/src/main/assets
           mkdir -p android/app/src/main/res
 
-          echo "=== Bundling with expo export:embed ==="
           npx expo export:embed \
             --platform android \
             --bundle-output android/app/src/main/assets/index.android.bundle \
             --assets-dest android/app/src/main/res \
-            --dev false \
-            2>&1
+            --dev false 2>&1
 
           BUNDLE=android/app/src/main/assets/index.android.bundle
           if [ -f "$BUNDLE" ]; then
             echo "✅ Bundle size: $(stat -c%s "$BUNDLE") bytes"
           else
-            echo "❌ Bundle not created"
-            exit 1
+            echo "❌ Bundle not created"; exit 1
           fi
 
-      - name: Build APK (skip JS bundling — already done)
+      - name: Build APK (skip JS bundling)
         working-directory: artifacts/tamil-ai-chat/android
         run: |
           chmod +x gradlew
@@ -124,7 +116,6 @@ jobs:
             -PbundleInDebug=true \
             --no-daemon \
             2>&1 | tee /tmp/gradle.log
-          echo "=== APK files ==="
           find . -name "*.apk" | grep -v node_modules | while read f; do
             echo "$(stat -c%s "$f") bytes — $f"
           done | sort -rn
@@ -132,16 +123,12 @@ jobs:
       - name: Locate, validate and copy APK
         run: |
           APK=$(find artifacts/tamil-ai-chat/android -name "*.apk" 2>/dev/null \
-            | grep -v "node_modules\.git" \
+            | grep -v "node_modules" \
             | while read f; do echo "$(stat -c%s "$f" 2>/dev/null||echo 0) $f"; done \
             | sort -rn | awk 'NR==1{print $2}')
-          echo "APK found: $APK"
           SIZE=$(stat -c%s "$APK" 2>/dev/null || echo 0)
-          echo "SIZE: $SIZE bytes"
           if [ -z "$APK" ] || [ "$SIZE" -lt 1000000 ]; then
-            echo "❌ APK invalid (size: $SIZE bytes)"
-            tail -80 /tmp/gradle.log
-            exit 1
+            echo "❌ APK invalid ($SIZE bytes)"; tail -80 /tmp/gradle.log; exit 1
           fi
           echo "✅ $(ls -lh "$APK")"
           APK_NAME="my-girls-v${{ github.run_number }}.apk"
@@ -155,7 +142,7 @@ jobs:
           TAG="v${{ github.run_number }}"
           gh release create "$TAG" "$APK_NAME" \
             --title "My Girls — Build ${{ github.run_number }}" \
-            --notes "Standalone APK — mobile network-ல் work ஆகும். Build ${{ github.run_number }}." \
+            --notes "Build ${{ github.run_number }} — new icon." \
             --latest \
             --repo ${{ github.repository }}
           echo "✅ https://github.com/${{ github.repository }}/releases/download/$TAG/$APK_NAME"
