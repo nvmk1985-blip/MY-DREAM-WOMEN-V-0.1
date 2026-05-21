@@ -43,33 +43,15 @@ jobs:
             const j = JSON.parse(fs.readFileSync(p,'utf8'));
             j.expo.android.versionCode = $VERSION_CODE;
             fs.writeFileSync(p, JSON.stringify(j, null, 2));
-            console.log('versionCode set to', j.expo.android.versionCode);
+            console.log('versionCode:', j.expo.android.versionCode);
           "
 
-      - name: Apply app icon from Cloudinary (optional override)
-        env:
-          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
-          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+      - name: Verify app icon
         run: |
-          ICON_BASE="artifacts/tamil-ai-chat/assets/images"
-          REPO_SIZE=$(stat -c%s "$ICON_BASE/icon.png" 2>/dev/null || echo 0)
-          echo "Repo icon.png size: $REPO_SIZE bytes"
-
-          # Try Cloudinary override — only apply if fetch succeeds AND size differs from repo
-          PINNED="https://res.cloudinary.com/$CLOUDINARY_CLOUD_NAME/image/upload/my-girls/app-icon/app_icon.png"
-          HTTP=$(curl -sL -o /tmp/cld_icon.png -w "%{http_code}" "$PINNED" 2>/dev/null || echo "000")
-          CLD_SIZE=$(stat -c%s /tmp/cld_icon.png 2>/dev/null || echo 0)
-          echo "Cloudinary icon size: $CLD_SIZE bytes (HTTP $HTTP)"
-
-          if [ "$HTTP" = "200" ] && [ "$CLD_SIZE" -gt 50000 ] && [ "$CLD_SIZE" != "$REPO_SIZE" ]; then
-            cp /tmp/cld_icon.png "$ICON_BASE/icon.png"
-            cp /tmp/cld_icon.png "$ICON_BASE/adaptive-icon.png"
-            echo "✅ Cloudinary icon applied (different from repo)"
-          else
-            echo "✅ Using repo icon (Cloudinary same or unavailable)"
-          fi
-          echo "Final icon size: $(stat -c%s $ICON_BASE/icon.png) bytes"
+          ICON="artifacts/tamil-ai-chat/assets/images/icon.png"
+          SIZE=$(stat -c%s "$ICON")
+          SHA=$(sha256sum "$ICON" | awk '{print $1}')
+          echo "✅ icon.png: $SIZE bytes | sha256=$SHA"
 
       - name: Expo Prebuild
         working-directory: artifacts/tamil-ai-chat
@@ -79,10 +61,7 @@ jobs:
           CI: 1
         run: |
           yes | npx expo prebuild --platform android --clean 2>&1 || true
-          if [ ! -d android ]; then
-            echo "❌ android/ not created"
-            exit 1
-          fi
+          if [ ! -d android ]; then echo "❌ android/ not created"; exit 1; fi
           ls android/
 
       - name: Bundle JS with expo export:embed
@@ -94,28 +73,20 @@ jobs:
         run: |
           mkdir -p android/app/src/main/assets
           mkdir -p android/app/src/main/res
-
           npx expo export:embed \
             --platform android \
             --bundle-output android/app/src/main/assets/index.android.bundle \
             --assets-dest android/app/src/main/res \
             --dev false 2>&1
-
           BUNDLE=android/app/src/main/assets/index.android.bundle
-          if [ -f "$BUNDLE" ]; then
-            echo "✅ Bundle size: $(stat -c%s "$BUNDLE") bytes"
-          else
-            echo "❌ Bundle not created"; exit 1
-          fi
+          if [ -f "$BUNDLE" ]; then echo "✅ Bundle: $(stat -c%s $BUNDLE) bytes"
+          else echo "❌ Bundle not created"; exit 1; fi
 
-      - name: Build APK (skip JS bundling)
+      - name: Build APK
         working-directory: artifacts/tamil-ai-chat/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug \
-            -PbundleInDebug=true \
-            --no-daemon \
-            2>&1 | tee /tmp/gradle.log
+          ./gradlew assembleDebug -PbundleInDebug=true --no-daemon 2>&1 | tee /tmp/gradle.log
           find . -name "*.apk" | grep -v node_modules | while read f; do
             echo "$(stat -c%s "$f") bytes — $f"
           done | sort -rn
@@ -123,7 +94,7 @@ jobs:
       - name: Locate, validate and copy APK
         run: |
           APK=$(find artifacts/tamil-ai-chat/android -name "*.apk" 2>/dev/null \
-            | grep -v "node_modules" \
+            | grep -v node_modules \
             | while read f; do echo "$(stat -c%s "$f" 2>/dev/null||echo 0) $f"; done \
             | sort -rn | awk 'NR==1{print $2}')
           SIZE=$(stat -c%s "$APK" 2>/dev/null || echo 0)
@@ -142,7 +113,7 @@ jobs:
           TAG="v${{ github.run_number }}"
           gh release create "$TAG" "$APK_NAME" \
             --title "My Girls — Build ${{ github.run_number }}" \
-            --notes "Build ${{ github.run_number }} — new icon." \
+            --notes "Build ${{ github.run_number }}" \
             --latest \
             --repo ${{ github.repository }}
           echo "✅ https://github.com/${{ github.repository }}/releases/download/$TAG/$APK_NAME"
