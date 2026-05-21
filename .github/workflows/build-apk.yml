@@ -25,6 +25,11 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install ImageMagick
+        run: |
+          sudo apt-get install -y imagemagick
+          convert --version | head -2
+
       - name: Install pnpm
         run: npm install -g pnpm@10
 
@@ -46,17 +51,6 @@ jobs:
             console.log('versionCode:', j.expo.android.versionCode);
           "
 
-      - name: Sync icon files (icon.png → adaptive-icon.png)
-        run: |
-          ICON="artifacts/tamil-ai-chat/assets/images/icon.png"
-          ADAPTIVE="artifacts/tamil-ai-chat/assets/images/adaptive-icon.png"
-          cp "$ICON" "$ADAPTIVE"
-          ICON_SHA=$(sha256sum "$ICON" | awk '{print $1}')
-          ADAP_SHA=$(sha256sum "$ADAPTIVE" | awk '{print $1}')
-          echo "✅ icon.png sha256:          $ICON_SHA"
-          echo "✅ adaptive-icon.png sha256: $ADAP_SHA"
-          echo "✅ Icons synced — both files identical"
-
       - name: Verify app icon
         run: |
           ICON="artifacts/tamil-ai-chat/assets/images/icon.png"
@@ -73,7 +67,54 @@ jobs:
         run: |
           yes | npx expo prebuild --platform android --clean 2>&1 || true
           if [ ! -d android ]; then echo "❌ android/ not created"; exit 1; fi
-          ls android/
+          echo "✅ android/ created"
+
+      - name: Inject custom icons via ImageMagick
+        run: |
+          ICON="artifacts/tamil-ai-chat/assets/images/icon.png"
+          RES="artifacts/tamil-ai-chat/android/app/src/main/res"
+
+          echo "📐 Generating launcher icons from $ICON ..."
+
+          # Standard sizes: folder → launcher size → adaptive foreground size
+          declare -A SIZES=(
+            ["mipmap-mdpi"]="48x48 108x108"
+            ["mipmap-hdpi"]="72x72 162x162"
+            ["mipmap-xhdpi"]="96x96 216x216"
+            ["mipmap-xxhdpi"]="144x144 324x324"
+            ["mipmap-xxxhdpi"]="192x192 432x432"
+          )
+
+          for FOLDER in "${!SIZES[@]}"; do
+            read LAUNCHER_SIZE FOREGROUND_SIZE <<< "${SIZES[$FOLDER]}"
+            DIR="$RES/$FOLDER"
+            mkdir -p "$DIR"
+
+            # ic_launcher.png — full square icon
+            convert "$ICON" -resize "$LAUNCHER_SIZE!" "$DIR/ic_launcher.png"
+            echo "  ✅ $FOLDER/ic_launcher.png ($LAUNCHER_SIZE)"
+
+            # ic_launcher_round.png — circular icon
+            convert "$ICON" -resize "$LAUNCHER_SIZE" \
+              \( +clone -alpha extract \
+                 -draw "fill white circle $((${LAUNCHER_SIZE%x*}/2)),$((${LAUNCHER_SIZE#*x}/2)) $((${LAUNCHER_SIZE%x*}/2)),0" \
+                 -alpha off \) \
+              -compose CopyOpacity -composite \
+              "$DIR/ic_launcher_round.png" 2>/dev/null || \
+            convert "$ICON" -resize "$LAUNCHER_SIZE!" "$DIR/ic_launcher_round.png"
+            echo "  ✅ $FOLDER/ic_launcher_round.png ($LAUNCHER_SIZE)"
+
+            # ic_launcher_foreground.png — adaptive icon foreground (larger canvas with padding)
+            convert "$ICON" -resize "${FOREGROUND_SIZE}!" "$DIR/ic_launcher_foreground.png"
+            echo "  ✅ $FOLDER/ic_launcher_foreground.png ($FOREGROUND_SIZE)"
+          done
+
+          echo ""
+          echo "📋 Verifying generated icons:"
+          find "$RES" -name "ic_launcher*.png" | sort | while read f; do
+            SIZE=$(identify -format "%wx%h" "$f" 2>/dev/null || echo "?x?")
+            echo "  $SIZE — $f"
+          done
 
       - name: Bundle JS with expo export:embed
         working-directory: artifacts/tamil-ai-chat
@@ -124,7 +165,7 @@ jobs:
           TAG="v${{ github.run_number }}"
           gh release create "$TAG" "$APK_NAME" \
             --title "My Girls — Build ${{ github.run_number }}" \
-            --notes "Build ${{ github.run_number }}" \
+            --notes "Build ${{ github.run_number }} — icon fix via ImageMagick" \
             --latest \
             --repo ${{ github.repository }}
           echo "✅ https://github.com/${{ github.repository }}/releases/download/$TAG/$APK_NAME"
