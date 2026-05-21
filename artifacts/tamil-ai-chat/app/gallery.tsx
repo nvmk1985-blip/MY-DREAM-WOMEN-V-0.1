@@ -1,4 +1,3 @@
-sha: 6c18e4ccffc1a8a5b2fa5b5b6152a848479ee8d7
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Alert,
