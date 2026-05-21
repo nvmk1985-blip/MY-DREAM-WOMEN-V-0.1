@@ -74,46 +74,44 @@ jobs:
           ICON="artifacts/tamil-ai-chat/assets/images/icon.png"
           RES="artifacts/tamil-ai-chat/android/app/src/main/res"
 
-          echo "📐 Generating launcher icons from $ICON ..."
+          echo "🗑️  Removing existing .webp icon files (avoid duplicate resource error)..."
+          find "$RES" -name "ic_launcher*.webp" -delete
+          find "$RES" -name "ic_launcher*.png" -delete
+          echo "✅ Old icons cleared"
 
-          # Standard sizes: folder → launcher size → adaptive foreground size
-          declare -A SIZES=(
-            ["mipmap-mdpi"]="48x48 108x108"
-            ["mipmap-hdpi"]="72x72 162x162"
-            ["mipmap-xhdpi"]="96x96 216x216"
-            ["mipmap-xxhdpi"]="144x144 324x324"
-            ["mipmap-xxxhdpi"]="192x192 432x432"
-          )
+          echo "📐 Generating launcher icons from custom icon.png ..."
 
-          for FOLDER in "${!SIZES[@]}"; do
-            read LAUNCHER_SIZE FOREGROUND_SIZE <<< "${SIZES[$FOLDER]}"
+          for FOLDER_SIZE in \
+            "mipmap-mdpi:48:108" \
+            "mipmap-hdpi:72:162" \
+            "mipmap-xhdpi:96:216" \
+            "mipmap-xxhdpi:144:324" \
+            "mipmap-xxxhdpi:192:432"; do
+
+            FOLDER="${FOLDER_SIZE%%:*}"
+            REST="${FOLDER_SIZE#*:}"
+            LAUNCHER_PX="${REST%%:*}"
+            FOREGROUND_PX="${REST##*:}"
             DIR="$RES/$FOLDER"
             mkdir -p "$DIR"
 
-            # ic_launcher.png — full square icon
-            convert "$ICON" -resize "$LAUNCHER_SIZE!" "$DIR/ic_launcher.png"
-            echo "  ✅ $FOLDER/ic_launcher.png ($LAUNCHER_SIZE)"
+            convert "$ICON" -resize "${LAUNCHER_PX}x${LAUNCHER_PX}!" \
+              -define png:compression-level=9 "$DIR/ic_launcher.png"
 
-            # ic_launcher_round.png — circular icon
-            convert "$ICON" -resize "$LAUNCHER_SIZE" \
-              \( +clone -alpha extract \
-                 -draw "fill white circle $((${LAUNCHER_SIZE%x*}/2)),$((${LAUNCHER_SIZE#*x}/2)) $((${LAUNCHER_SIZE%x*}/2)),0" \
-                 -alpha off \) \
-              -compose CopyOpacity -composite \
-              "$DIR/ic_launcher_round.png" 2>/dev/null || \
-            convert "$ICON" -resize "$LAUNCHER_SIZE!" "$DIR/ic_launcher_round.png"
-            echo "  ✅ $FOLDER/ic_launcher_round.png ($LAUNCHER_SIZE)"
+            convert "$ICON" -resize "${LAUNCHER_PX}x${LAUNCHER_PX}!" \
+              -define png:compression-level=9 "$DIR/ic_launcher_round.png"
 
-            # ic_launcher_foreground.png — adaptive icon foreground (larger canvas with padding)
-            convert "$ICON" -resize "${FOREGROUND_SIZE}!" "$DIR/ic_launcher_foreground.png"
-            echo "  ✅ $FOLDER/ic_launcher_foreground.png ($FOREGROUND_SIZE)"
+            convert "$ICON" -resize "${FOREGROUND_PX}x${FOREGROUND_PX}!" \
+              -define png:compression-level=9 "$DIR/ic_launcher_foreground.png"
+
+            echo "  ✅ $FOLDER — launcher:${LAUNCHER_PX}px foreground:${FOREGROUND_PX}px"
           done
 
           echo ""
-          echo "📋 Verifying generated icons:"
+          echo "📋 Final icon files:"
           find "$RES" -name "ic_launcher*.png" | sort | while read f; do
-            SIZE=$(identify -format "%wx%h" "$f" 2>/dev/null || echo "?x?")
-            echo "  $SIZE — $f"
+            SZ=$(stat -c%s "$f")
+            echo "  $SZ bytes — $(basename $(dirname $f))/$(basename $f)"
           done
 
       - name: Bundle JS with expo export:embed
@@ -165,7 +163,7 @@ jobs:
           TAG="v${{ github.run_number }}"
           gh release create "$TAG" "$APK_NAME" \
             --title "My Girls — Build ${{ github.run_number }}" \
-            --notes "Build ${{ github.run_number }} — icon fix via ImageMagick" \
+            --notes "Build ${{ github.run_number }} — custom icon via ImageMagick" \
             --latest \
             --repo ${{ github.repository }}
           echo "✅ https://github.com/${{ github.repository }}/releases/download/$TAG/$APK_NAME"
