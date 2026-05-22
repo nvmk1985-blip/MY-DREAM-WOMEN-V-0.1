@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Image, Modal, Dimensions, ActivityIndicator,
-  Alert, RefreshControl, TextInput,
+  Alert, RefreshControl, TextInput, StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -295,6 +295,7 @@ export default function CloudStorageScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <StatusBar backgroundColor="#1a1a2e" barStyle="light-content" />
       <Stack.Screen options={{ headerShown: false }} />
 
       <View style={styles.header}>
