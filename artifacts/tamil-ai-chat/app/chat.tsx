@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { sendMessage, sendToLocalGemma, Message, generateImage, listCloudinaryImages } from '../services/api';
+import { sendMessage, sendToLocalGemma, Message, generateImage, generateImageHuggingFace, listCloudinaryImages } from '../services/api';
 
 // Per-style photo cache helpers — same key as ai-girls-cloud.tsx uses
 const stylePhotoCacheKey = (personaId: string, styleId: string) =>
@@ -585,11 +585,8 @@ export default function ChatScreen() {
     setSelectedStyleId(styleId);
     const photos = await getStylePhotos(persona.id, styleId);
     if (photos.length === 0) {
-      const styleLabel = PHOTO_STYLES.find(s => s.id === styleId)?.label ?? styleId;
-      Alert.alert(
-        'Photos இல்லை',
-        `"${styleLabel}" folder-ல் photos இல்லை.\n\nCloud Storage-ல் upload பண்ணுங்க அல்லது AI Generate பண்ணுங்க!`,
-      );
+      // Photos இல்லையெனில் alert பதிலாக auto-generate — camera tap action
+      handleGeneratePhoto(styleId);
       return;
     }
     const styleLabel = PHOTO_STYLES.find(s => s.id === styleId)?.label ?? styleId;
@@ -667,8 +664,9 @@ export default function ChatScreen() {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
   };
 
-  const handleGeneratePhoto = async () => {
+  const handleGeneratePhoto = async (styleIdOverride?: string) => {
     if (!persona) return;
+    const effectiveStyleId = styleIdOverride ?? selectedStyleId;
     setShowGenModal(false);
     setGeneratingPhoto(true);
 
@@ -682,25 +680,44 @@ export default function ChatScreen() {
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
     try {
-      const style = PHOTO_STYLES.find(s => s.id === selectedStyleId);
+      const style = PHOTO_STYLES.find(s => s.id === effectiveStyleId);
       const stylePrompt = style ? style.prompt : '';
       const combined = [stylePrompt, genPrompt.trim()].filter(Boolean).join(', ');
-      const result = await generateImage({
-        imgFace: persona.faceDesc,
-        imgBody: persona.bodyDesc,
-        imgAttire: persona.attireDesc,
-        imagePrompt: combined || undefined,
-        personaName: persona.name,
-        mode: 'single',
-      });
+
+      // Check if HuggingFace token is saved — use HF AI if available
+      let hfToken: string | null = null;
+      try {
+        const raw = await AsyncStorage.getItem('api_keys_store');
+        if (raw) {
+          const parsed = JSON.parse(raw) as Record<string, string>;
+          hfToken = parsed['huggingface'] || null;
+        }
+      } catch {}
+
+      let result: { b64_json: string; mimeType: string };
+      if (hfToken) {
+        const fullPrompt = [
+          persona.faceDesc, persona.bodyDesc, persona.attireDesc, combined,
+        ].filter(Boolean).join(', ');
+        result = await generateImageHuggingFace(fullPrompt, hfToken);
+      } else {
+        result = await generateImage({
+          imgFace: persona.faceDesc,
+          imgBody: persona.bodyDesc,
+          imgAttire: persona.attireDesc,
+          imagePrompt: combined || undefined,
+          personaName: persona.name,
+          mode: 'single',
+        });
+      }
 
       const dataUri = `data:${result.mimeType};base64,${result.b64_json}`;
 
       // Save to persona+style specific folder & cache the URL locally for instant modal loading
-      const saveFolder = persona ? `${persona.id}/${selectedStyleId}` : 'ai';
+      const saveFolder = persona ? `${persona.id}/${effectiveStyleId}` : 'ai';
       saveGeneratedImageToCloud(result.b64_json, result.mimeType, saveFolder).then(cloudImg => {
         if (cloudImg && persona) {
-          addStylePhoto(persona.id, selectedStyleId, { url: cloudImg.url, public_id: cloudImg.public_id });
+          addStylePhoto(persona.id, effectiveStyleId, { url: cloudImg.url, public_id: cloudImg.public_id });
         }
       }).catch(() => {});
 
@@ -937,6 +954,9 @@ export default function ChatScreen() {
 
   const headerRight = () => (
     <View style={styles.headerBtns}>
+      <TouchableOpacity style={styles.headerBtn} onPress={() => router.push('/keys')}>
+        <Text style={styles.headerBtnIcon}>🔑</Text>
+      </TouchableOpacity>
       <TouchableOpacity style={styles.headerBtn} onPress={() => setShowStyleSheet(true)}>
         <Text style={styles.headerBtnIcon}>🎨</Text>
       </TouchableOpacity>
@@ -984,8 +1004,8 @@ export default function ChatScreen() {
       )}
 
       <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={[styles.flex, { backgroundColor: wallpaperBg }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <FlatList
@@ -994,7 +1014,7 @@ export default function ChatScreen() {
           keyExtractor={item => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.msgList}
-
+          style={{ backgroundColor: wallpaperBg }}
         />
         {loading && (
           <View style={styles.loadingRow}>
@@ -1135,6 +1155,9 @@ export default function ChatScreen() {
 
                 {showGeneratePanel && !generatingPhoto && (
                   <View style={styles.generateInner}>
+                    <View style={styles.hfBadge}>
+                      <Text style={styles.hfBadgeTxt}>🤗 HuggingFace Token: Settings-ல் save பண்ணினா HF AI use ஆகும்</Text>
+                    </View>
                     <TextInput
                       style={styles.genInput}
                       value={genPrompt}
@@ -1636,6 +1659,8 @@ const styles = StyleSheet.create({
   generateToggle: { paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#f5f5f5' },
   generateToggleTxt: { color: '#075E54', fontWeight: '700', fontSize: 14, textAlign: 'center' },
   generateInner: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 },
+  hfBadge: { backgroundColor: '#fff3e0', borderRadius: 8, padding: 8, marginBottom: 8, borderWidth: 1, borderColor: '#ff6b35' },
+  hfBadgeTxt: { color: '#bf360c', fontSize: 12, textAlign: 'center' },
 
   genLabel: { fontSize: 13, fontWeight: '600', color: '#444', marginBottom: 8 },
   genInput: { backgroundColor: '#f8f8f8', borderRadius: 10, borderWidth: 1, borderColor: '#ddd', padding: 12, fontSize: 14, color: '#222', minHeight: 60, textAlignVertical: 'top', marginBottom: 8 },
