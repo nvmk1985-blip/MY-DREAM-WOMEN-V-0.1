@@ -8,7 +8,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { uploadToCloudinary, uploadUriToCloudinary, listCloudinaryImages, deleteFromCloudinary } from '../services/api';
 
 const { width } = Dimensions.get('window');
@@ -148,17 +148,11 @@ export default function CloudStorageScreen() {
   }, []);
 
   const uploadAppIcon = useCallback(async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Permission வேணும்', 'Gallery access allow பண்ணுங்க');
-      return;
-    }
-    await new Promise(r => setTimeout(r, 350));
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.9,
+    // DocumentPicker → file manager (Honor folders) திறக்கும், gallery இல்ல
+    const result = await DocumentPicker.getDocumentAsync({
+      type: 'image/*',
+      copyToCacheDirectory: true,
+      multiple: false,
     });
     if (result.canceled || !result.assets?.[0]) return;
     const asset = result.assets[0];
@@ -300,7 +294,7 @@ export default function CloudStorageScreen() {
   }));
 
   return (
-    <SafeAreaView style={styles.safe} edges={['bottom']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
 
       <View style={styles.header}>
@@ -477,7 +471,7 @@ export default function CloudStorageScreen() {
 
             <View style={styles.appIconInfo}>
               <Text style={styles.appIconInfoTxt}>
-                📌 Photo select → 1:1 crop → Cloudinary upload{'\n'}
+                📌 File Manager திறக்கும் → Folder navigate → Image select → Cloudinary upload{'\n'}
                 🔨 APK build-ல் latest icon auto-fetch ஆகும்
               </Text>
             </View>
