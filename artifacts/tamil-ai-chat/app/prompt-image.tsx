@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   Image, ActivityIndicator, ScrollView, Alert, Dimensions, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateImageHuggingFace, HF_IMAGE_MODEL } from '../services/api';
 
@@ -29,25 +29,26 @@ export default function PromptImageScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const loadToken = async () => {
-      try {
-        // Read from api_keys_store (key id = 'hf') OR legacy 'hf_api_key'
-        const [raw, legacyToken] = await Promise.all([
-          AsyncStorage.getItem('api_keys_store'),
-          AsyncStorage.getItem('hf_api_key'),
-        ]);
-        if (raw) {
-          const parsed = JSON.parse(raw) as Record<string, string>;
-          const token = parsed['hf'] || parsed['huggingface'] || legacyToken || null;
-          setHfToken(token);
-        } else if (legacyToken) {
-          setHfToken(legacyToken);
-        }
-      } catch {}
-    };
-    loadToken();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      const loadToken = async () => {
+        try {
+          const [raw, legacyToken] = await Promise.all([
+            AsyncStorage.getItem('api_keys_store'),
+            AsyncStorage.getItem('hf_api_key'),
+          ]);
+          let token: string | null = null;
+          if (raw) {
+            const parsed = JSON.parse(raw) as Record<string, string>;
+            token = parsed['hf'] || parsed['huggingface'] || null;
+          }
+          if (!token && legacyToken) token = legacyToken;
+          setHfToken(token?.trim() || null);
+        } catch {}
+      };
+      loadToken();
+    }, [])
+  );
 
   const applyPreset = (preset: { label: string; prompt: string }) => {
     setSelectedPreset(preset.label);
