@@ -1112,6 +1112,12 @@ export default function ChatScreen() {
           />
           <View style={styles.btnStack}>
             <TouchableOpacity
+              style={styles.promptImageBtn}
+              onPress={() => router.push('/prompt-image')}
+            >
+              <Text style={styles.cameraIcon}>🎨</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={styles.promptPickBtn}
               onPress={pickImageForPrompt}
               disabled={promptLoading}
@@ -1698,6 +1704,7 @@ const styles = StyleSheet.create({
   inputBar: { flexDirection: 'row', alignItems: 'flex-end', padding: 8, backgroundColor: '#F0F0F0', borderTopWidth: 1, borderTopColor: '#ddd', gap: 8 },
   input: { flex: 1, backgroundColor: '#fff', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, maxHeight: 120, color: '#111', borderWidth: 1, borderColor: '#ddd' },
   btnStack: { flexDirection: 'column', gap: 6, alignItems: 'center' },
+  promptImageBtn: { backgroundColor: '#E91E8C', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', elevation: 2 },
   promptPickBtn: { backgroundColor: '#7B1FA2', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', elevation: 2 },
   cameraBtn: { backgroundColor: '#E53935', width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center', elevation: 3 },
   translateBtn: { backgroundColor: '#1565C0', width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center', elevation: 3 },
