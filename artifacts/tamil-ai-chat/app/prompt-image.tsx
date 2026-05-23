@@ -30,14 +30,23 @@ export default function PromptImageScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem('api_keys_store').then(raw => {
-      if (raw) {
-        try {
+    const loadToken = async () => {
+      try {
+        // Read from api_keys_store (key id = 'hf') OR legacy 'hf_api_key'
+        const [raw, legacyToken] = await Promise.all([
+          AsyncStorage.getItem('api_keys_store'),
+          AsyncStorage.getItem('hf_api_key'),
+        ]);
+        if (raw) {
           const parsed = JSON.parse(raw) as Record<string, string>;
-          setHfToken(parsed['huggingface'] || null);
-        } catch {}
-      }
-    }).catch(() => {});
+          const token = parsed['hf'] || parsed['huggingface'] || legacyToken || null;
+          setHfToken(token);
+        } else if (legacyToken) {
+          setHfToken(legacyToken);
+        }
+      } catch {}
+    };
+    loadToken();
   }, []);
 
   const applyPreset = (preset: { label: string; prompt: string }) => {
