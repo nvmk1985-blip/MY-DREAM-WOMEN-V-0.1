@@ -1080,7 +1080,7 @@ export default function ChatScreen() {
 
       <KeyboardAvoidingView
         style={[styles.flex, { backgroundColor: wallpaperBg }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 80}
       >
         <FlatList
@@ -1102,17 +1102,17 @@ export default function ChatScreen() {
           </View>
         )}
 
-        <View style={styles.inputBarWrapper}>
-          {/* Top row: extra action buttons */}
-          <View style={styles.inputTopRow}>
+        <View style={{ position: 'relative' }}>
+          {/* Floating action buttons — absolute right side, above input bar */}
+          <View style={styles.chatFabs}>
             <TouchableOpacity
-              style={styles.promptImageBtn}
+              style={[styles.chatFabItem, { backgroundColor: '#E91E8C' }]}
               onPress={() => router.push('/prompt-image')}
             >
               <Text style={styles.cameraIcon}>🎨</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.promptPickBtn}
+              style={[styles.chatFabItem, { backgroundColor: '#7B1FA2' }]}
               onPress={pickImageForPrompt}
               disabled={promptLoading}
             >
@@ -1122,7 +1122,17 @@ export default function ChatScreen() {
               }
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.translateBtn}
+              style={[styles.chatFabItem, { backgroundColor: '#E53935' }]}
+              onPress={() => setShowGenModal(true)}
+              disabled={generatingPhoto}
+            >
+              {generatingPhoto
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={styles.cameraIcon}>📷</Text>
+              }
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.chatFabItem, { backgroundColor: '#1565C0' }]}
               onPress={() => handleTranslate(input)}
               disabled={translateLoading}
             >
@@ -1132,7 +1142,7 @@ export default function ChatScreen() {
               }
             </TouchableOpacity>
           </View>
-          {/* Bottom row: text input + send buttons */}
+          {/* Compact input bar — WhatsApp style */}
           <View style={styles.inputBar}>
             <TextInput
               style={styles.input}
@@ -1143,16 +1153,6 @@ export default function ChatScreen() {
               multiline
               maxLength={1000}
             />
-            <TouchableOpacity
-              style={styles.cameraBtn}
-              onPress={() => setShowGenModal(true)}
-              disabled={generatingPhoto}
-            >
-              {generatingPhoto
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={styles.cameraIcon}>📷</Text>
-              }
-            </TouchableOpacity>
             <TouchableOpacity
               style={[styles.sendBtn, (!input.trim() || loading) && styles.sendBtnDisabled]}
               onPress={handleSend}
@@ -1707,9 +1707,21 @@ const styles = StyleSheet.create({
   loadingRow: { flexDirection: 'row', padding: 8, paddingLeft: 14 },
   loadingBubble: { backgroundColor: '#fff', borderRadius: 10, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
   loadingText: { color: '#075E54', fontSize: 13 },
-  inputBarWrapper: { backgroundColor: '#F0F0F0', borderTopWidth: 1, borderTopColor: '#ddd' },
-  inputTopRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingTop: 6, paddingBottom: 2, gap: 8 },
-  inputBar: { flexDirection: 'row', alignItems: 'flex-end', padding: 8, backgroundColor: '#F0F0F0', gap: 8 },
+  chatFabs: {
+    position: 'absolute', right: 10, bottom: 62,
+    alignItems: 'center', gap: 8, zIndex: 100,
+  },
+  chatFabItem: {
+    width: 44, height: 44, borderRadius: 22,
+    justifyContent: 'center', alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
+  },
+  inputBar: {
+    flexDirection: 'row', alignItems: 'flex-end',
+    paddingHorizontal: 10, paddingVertical: 8, paddingRight: 64,
+    backgroundColor: '#F0F0F0', borderTopWidth: 1, borderTopColor: '#ddd', gap: 8,
+  },
   input: { flex: 1, backgroundColor: '#fff', borderRadius: 24, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, maxHeight: 120, color: '#111', borderWidth: 1, borderColor: '#ddd' },
   btnStack: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   promptImageBtn: { backgroundColor: '#E91E8C', width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', elevation: 2 },
