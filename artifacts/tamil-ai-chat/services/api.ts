@@ -323,10 +323,19 @@ export async function deleteFromCloudinary(public_id: string): Promise<void> {
 }
 
 // ── HuggingFace Inference API — Text-to-Image ─────────────────
-export const HF_IMAGE_MODEL = 'PenguinKaDushman/PornMaster-pro-V7';
+export const HF_IMAGE_MODEL = 'Lykon/dreamshaper-xl-1-0';
+
+export const HF_NSFW_MODELS = [
+  { id: 'Lykon/dreamshaper-xl-1-0',                         label: 'DreamShaper XL',  tag: 'Realistic' },
+  { id: 'SG161222/RealVisXL_V4.0',                          label: 'RealVis XL',      tag: 'Ultra Real' },
+  { id: 'John6666/wai-nsfw-illustrious-sdxl-v110-sdxl',     label: 'WAI NSFW Anime',  tag: 'Anime 18+' },
+  { id: 'Yntec/HyperPhotoV2',                               label: 'HyperPhoto',      tag: 'Photo' },
+  { id: 'fluently/Fluently-XL-Final',                       label: 'Fluently XL',     tag: 'Quality' },
+];
+
+// Only use direct inference endpoint — NSFW models not on router whitelist
 const HF_ENDPOINTS = [
   'https://api-inference.huggingface.co/models',
-  'https://router.huggingface.co/hf-inference/models',
 ];
 
 // Convert blob to base64 using FileReader (Android-safe, no arrayBuffer issues)
