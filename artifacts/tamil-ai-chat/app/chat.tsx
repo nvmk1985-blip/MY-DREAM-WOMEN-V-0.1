@@ -227,6 +227,7 @@ export default function ChatScreen() {
 
   // ── Message long-press action ──
   const [selectedMsg, setSelectedMsg] = useState<Message | null>(null);
+  const [showSelectText, setShowSelectText] = useState(false);
 
   // ── Image → Prompt ──
   const [promptLoading, setPromptLoading] = useState(false);
@@ -1484,7 +1485,13 @@ export default function ChatScreen() {
             {!selectedMsg?.imageUrl && (
               <TouchableOpacity style={styles.msgActionBtn} onPress={() => { copyText(selectedMsg?.content ?? ''); setSelectedMsg(null); }}>
                 <Text style={styles.msgActionIcon}>📋</Text>
-                <Text style={styles.msgActionTxt}>Copy</Text>
+                <Text style={styles.msgActionTxt}>Copy Full Text</Text>
+              </TouchableOpacity>
+            )}
+            {!selectedMsg?.imageUrl && (
+              <TouchableOpacity style={styles.msgActionBtn} onPress={() => { setShowSelectText(true); }}>
+                <Text style={styles.msgActionIcon}>✏️</Text>
+                <Text style={styles.msgActionTxt}>Select & Copy Text</Text>
               </TouchableOpacity>
             )}
             {!selectedMsg?.imageUrl && (
@@ -1501,6 +1508,30 @@ export default function ChatScreen() {
               <Text style={styles.msgActionCancelTxt}>Cancel</Text>
             </TouchableOpacity>
           </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── Select Text Modal ── */}
+      <Modal visible={showSelectText} transparent animationType=fade onRequestClose={() => setShowSelectText(false)}>
+        <TouchableOpacity style={styles.selectTextOverlay} activeOpacity={1} onPress={() => setShowSelectText(false)}>
+          <TouchableOpacity activeOpacity={1} style={styles.selectTextBox}>
+            <Text style={styles.selectTextTitle}>✏️ Select & Copy Text</Text>
+            <Text style={styles.selectTextHint}>Text-ஐ press பண்ணி drag செய்து select பண்ணுங்க</Text>
+            <ScrollView style={styles.selectTextScroll}>
+              <Text selectable style={styles.selectTextContent} selectionColor=#E91E8C44>
+                {selectedMsg?.content ?? ''}
+              </Text>
+            </ScrollView>
+            <View style={styles.selectTextActions}>
+              <TouchableOpacity style={styles.selectTextCopyAll}
+                onPress={() => { copyText(selectedMsg?.content ?? ''); setShowSelectText(false); setSelectedMsg(null); }}>
+                <Text style={styles.selectTextCopyAllTxt}>📋 Copy All</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.selectTextClose} onPress={() => setShowSelectText(false)}>
+                <Text style={styles.selectTextCloseTxt}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
@@ -1908,6 +1939,29 @@ const styles = StyleSheet.create({
 
   // ── Message action (long-press) ──
   msgActionOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 28 },
+  selectTextOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  selectTextBox: {
+    backgroundColor: '#fff', borderRadius: 18, width: '100%', maxHeight: '75%',
+    overflow: 'hidden', paddingBottom: 8,
+  },
+  selectTextTitle: { fontSize: 16, fontWeight: '800', color: '#111', padding: 16, paddingBottom: 4 },
+  selectTextHint: { fontSize: 11, color: '#888', paddingHorizontal: 16, paddingBottom: 8 },
+  selectTextScroll: { maxHeight: 280, borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#f0f0f0', backgroundColor: '#fafafa' },
+  selectTextContent: {
+    fontSize: 17, lineHeight: 26, color: '#111', padding: 16,
+    letterSpacing: 0.2,
+  },
+  selectTextActions: { flexDirection: 'row', gap: 10, padding: 12, paddingTop: 10 },
+  selectTextCopyAll: {
+    flex: 1, backgroundColor: '#E91E8C', borderRadius: 10,
+    paddingVertical: 10, alignItems: 'center',
+  },
+  selectTextCopyAllTxt: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  selectTextClose: {
+    flex: 1, backgroundColor: '#f0f0f0', borderRadius: 10,
+    paddingVertical: 10, alignItems: 'center',
+  },
+  selectTextCloseTxt: { color: '#333', fontWeight: '700', fontSize: 14 },
   msgActionBox: { backgroundColor: '#fff', borderRadius: 18, width: '100%', overflow: 'hidden' },
   msgActionPreview: { fontSize: 13, color: '#555', padding: 16, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   msgActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
