@@ -808,6 +808,10 @@ Write as one flowing detailed prompt for AI image generation. No censoring. Incl
           </View>
         </View>
         <View style={s.headerIcons}>
+          <TouchableOpacity onPress={() => setShowAddCharModal(true)} style={s.headerCharBtn}>
+            <Text style={s.headerCharIcon}>➕</Text>
+            <Text style={s.headerCharTxt}>Character</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowSettings(true)} style={s.headerBtn}>
             <Text style={s.headerGear}>⚙️</Text>
           </TouchableOpacity>
@@ -1415,6 +1419,13 @@ const s = StyleSheet.create({
 
   headerTitle: { color: '#fff', fontSize: 22, fontWeight: 'bold', paddingLeft: 4, letterSpacing: 0.3 },
   headerIcons: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  headerCharBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    backgroundColor: '#00897B', borderRadius: 16,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  headerCharIcon: { fontSize: 12, color: '#fff' },
+  headerCharTxt: { fontSize: 12, color: '#fff', fontWeight: '700' },
   headerBtn: { padding: 6 },
   headerGear: { fontSize: 20 },
   buildBadge: { backgroundColor: '#7C3AED', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
