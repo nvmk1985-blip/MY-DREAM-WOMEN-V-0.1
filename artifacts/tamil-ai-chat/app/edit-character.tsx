@@ -25,6 +25,9 @@ export default function EditCharacterScreen() {
   const [bodyDesc, setBodyDesc] = useState('');
   const [attireDesc, setAttireDesc] = useState('');
   const [avatarPhotoUri, setAvatarPhotoUri] = useState<string | undefined>(undefined);
+  const [normalAvatarUri, setNormalAvatarUri] = useState<string | undefined>(undefined);
+  const [presanaAvatarUri, setPresanaAvatarUri] = useState<string | undefined>(undefined);
+  const [relationship, setRelationship] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [showCloudUrl, setShowCloudUrl] = useState(false);
@@ -51,6 +54,9 @@ export default function EditCharacterScreen() {
         setBodyDesc(data.bodyDesc ?? base.bodyDesc ?? '');
         setAttireDesc(data.attireDesc ?? base.attireDesc ?? '');
         setAvatarPhotoUri(data.avatarPhotoUri);
+        setNormalAvatarUri(data.normalAvatarUri);
+        setPresanaAvatarUri(data.presanaAvatarUri);
+        setRelationship(data.relationship ?? base.relationship ?? '');
         setNormalMode(moodRaw[1] === 'normal');
         setPresanaBehaviour(data.presanaBehaviour ?? '');
         setNormalBehaviour(data.normalBehaviour ?? '');
@@ -73,6 +79,7 @@ export default function EditCharacterScreen() {
       const data = {
         name, avatarLetter, greeting, prompt: systemPrompt,
         faceDesc, bodyDesc, attireDesc, avatarPhotoUri,
+        normalAvatarUri, presanaAvatarUri, relationship,
         presanaBehaviour, normalBehaviour,
       };
       await AsyncStorage.setItem(`persona_edit_${persona.id}`, JSON.stringify(data));
@@ -119,6 +126,34 @@ export default function EditCharacterScreen() {
     setAvatarPhotoUri(url);
     setCloudUrlInput('');
     setShowCloudUrl(false);
+  };
+
+
+  const pickModeAvatar = async (mode: 'normal' | 'presana') => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) { Alert.alert('Permission', 'Gallery permission வேணும்'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.85, allowsEditing: true, aspect: [1, 1], base64: true,
+    });
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      if (asset.base64) {
+        setUploadingAvatar(true);
+        try {
+          const mime = asset.mimeType || 'image/jpeg';
+          const cloudUrl = await uploadToCloudinary(asset.base64, mime, 'my-girls/avatars');
+          if (mode === 'normal') setNormalAvatarUri(cloudUrl.url);
+          else setPresanaAvatarUri(cloudUrl.url);
+        } catch {
+          if (mode === 'normal') setNormalAvatarUri(asset.uri);
+          else setPresanaAvatarUri(asset.uri);
+        } finally { setUploadingAvatar(false); }
+      } else {
+        if (mode === 'normal') setNormalAvatarUri(asset.uri);
+        else setPresanaAvatarUri(asset.uri);
+      }
+    }
   };
 
   const Field = ({ label, hint, value, onChange, minH = 60 }: {
@@ -240,6 +275,14 @@ export default function EditCharacterScreen() {
             placeholderTextColor="#bbb"
             maxLength={2}
           />
+          <Text style={[styles.sectionLabel, { marginTop: 14 }]}>RELATIONSHIP</Text>
+          <TextInput
+            style={styles.nameInput}
+            value={relationship}
+            onChangeText={setRelationship}
+            placeholder="e.g. மனைவி, தோழி, மாமியார், அக்கா, முன்னாள் காதலி..."
+            placeholderTextColor="#bbb"
+          />
           <Text style={[styles.sectionLabel, { marginTop: 14 }]}>GREETING (FIRST MESSAGE)</Text>
           <TextInput
             style={[styles.fieldInput, { minHeight: 80 }]}
@@ -316,6 +359,48 @@ export default function EditCharacterScreen() {
             />
           </View>
           <Text style={{ color: '#888', fontSize: 11, marginTop: 8 }}>💡 Save பண்ணா chat-ல உடனே apply ஆகும்.</Text>
+        </View>
+
+        {/* ── Dual Mode Avatars ── */}
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>MODE AVATARS</Text>
+          <Text style={{ color: '#888', fontSize: 11, marginBottom: 14 }}>Normal mode-ல் வேற photo, Presana mode-ல் வேற photo. Empty விட்டா main avatar use ஆகும்.</Text>
+          <View style={styles.modeAvatarRow}>
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <Text style={[styles.sectionLabel, { color: '#075E54', marginBottom: 8 }]}>😇 NORMAL</Text>
+              <TouchableOpacity onPress={() => pickModeAvatar('normal')}>
+                {normalAvatarUri
+                  ? <Image source={{ uri: normalAvatarUri }} style={styles.modeAvatarImg} />
+                  : <View style={[styles.modeAvatarPlaceholder, { borderColor: '#075E54' }]}>
+                      <Text style={{ fontSize: 28 }}>😇</Text>
+                      <Text style={{ fontSize: 10, color: '#075E54', marginTop: 4 }}>Tap to set</Text>
+                    </View>
+                }
+              </TouchableOpacity>
+              {normalAvatarUri && (
+                <TouchableOpacity style={[styles.modeRemoveBtn, { borderColor: '#075E54' }]} onPress={() => setNormalAvatarUri(undefined)}>
+                  <Text style={{ color: '#075E54', fontSize: 12 }}>🗑️ Remove</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <Text style={[styles.sectionLabel, { color: '#E91E63', marginBottom: 8 }]}>😈 PRESANA</Text>
+              <TouchableOpacity onPress={() => pickModeAvatar('presana')}>
+                {presanaAvatarUri
+                  ? <Image source={{ uri: presanaAvatarUri }} style={styles.modeAvatarImg} />
+                  : <View style={[styles.modeAvatarPlaceholder, { borderColor: '#E91E63' }]}>
+                      <Text style={{ fontSize: 28 }}>😈</Text>
+                      <Text style={{ fontSize: 10, color: '#E91E63', marginTop: 4 }}>Tap to set</Text>
+                    </View>
+                }
+              </TouchableOpacity>
+              {presanaAvatarUri && (
+                <TouchableOpacity style={[styles.modeRemoveBtn, { borderColor: '#E91E63' }]} onPress={() => setPresanaAvatarUri(undefined)}>
+                  <Text style={{ color: '#E91E63', fontSize: 12 }}>🗑️ Remove</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
         </View>
 
         <View style={styles.card}>
@@ -411,4 +496,8 @@ const styles = StyleSheet.create({
   moodBadge: { flex: 1, paddingVertical: 10, borderRadius: 20, borderWidth: 1.5, borderColor: '#ddd', alignItems: 'center' },
   moodBadgeActive: { backgroundColor: '#E91E63', borderColor: '#E91E63' },
   moodBadgeTxt: { fontSize: 14, fontWeight: '700', color: '#555' },
+  modeAvatarRow: { flexDirection: 'row', gap: 12 },
+  modeAvatarImg: { width: 90, height: 90, borderRadius: 45, borderWidth: 2, borderColor: '#ddd' },
+  modeAvatarPlaceholder: { width: 90, height: 90, borderRadius: 45, borderWidth: 2, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fafafa' },
+  modeRemoveBtn: { marginTop: 8, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, borderWidth: 1 },
 });
