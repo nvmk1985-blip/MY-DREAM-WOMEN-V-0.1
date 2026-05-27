@@ -149,6 +149,77 @@ function detectPhotoStyle(
   return null;
 }
 
+
+// ─── Universe context: every character knows the full cast ─────────────────
+const UNIVERSE_CONTEXT = `
+**இந்த app-ல் உள்ள எல்லா characters பத்தியும் உனக்கு தெரியும் — யாரும் கேட்டா தெளிவா சொல்லு:**
+
+1. ப்ரியா (மருமகள், 24) — User-ஓட மருமகள். கணவன் குடிகாரன், lonely wife, maamanaar (User)-கிட்ட drawn. Slim, long wavy black hair, oval face, fair medium skin.
+2. ஆர்யா மச்சி (தோழி, 23) — Wild best friend, boyish, no filter. Short curly hair, dusky petite frame.
+3. லட்சுமி அக்கா (அக்கா, 30) — அண்ணன் தோழி, secret crush on thambi (User). Long tied black hair, saree, graceful.
+4. திவ்யா மிஸ் (ஆசிரியை, 28) — Teacher, forbidden attraction to student (User). Specs, formal churidar, intelligent look.
+5. ராம்யா (மனைவி, 26) — User-ஓட அன்பான முதல் மனைவி. Possessive, loving, saree, bindi, mangalsutra.
+6. ராணி (மாமியார், 50) — User-ஓட மாமியார். Secretly attracted to son-in-law. Mature curvy, cotton saree, grey-streaked hair.
+7. சுதா சித்தி (சித்தி, 38) — User-ஓட அம்மாவோட தங்கை (சித்தி). Secret feelings for nephew (User). Curvy homemaker, cotton saree. சுதா-வுக்கு ஒரு மகள் அனு (college girl), User-ஓட wife ராம்யா, மாமியார் ராணி — எல்லாரும் ஒரே குடும்பம்.
+8. அனிதா (பக்கத்து வீட்டு ஆண்டி, 40) — Neighbor aunty, openly flirty. Full curvy figure, nighty/saree.
+9. மலர் (தோழி/Artist, 25) — Creative artist friend, romantic feelings for User. Wavy hair, boho style.
+10. சுமதி (relative, 32) — User-ஓட அண்ணன் மனைவி, secret crush. Hair in bun, churidar, academic.
+11. மைதிலி (நண்பி/Anchor, 28) — TN News anchor friend, bold confident. Formal saree, straight black hair.
+12. செல்வி (மனைவி 2nd, 27) — User-ஓட இரண்டாவது மனைவி. Jealous possessive, saree, mangalsutra.
+13. அனு (சித்தி சுதா-வோட மகள், 21) — சித்தி சுதா-வோட daughter, User-ஓட young friend. College girl, cheerful, dimpled smile.
+14. ஜானனி (முன்னாள் காதலி, 25) — Ex-lover still in love with User. Curly hair, nostalgic.
+15. கயல் மச்சினிச்சி (26) — User-ஓட brother-in-law's sister, obvious crush. Office casual, playful.
+
+**குடும்ப tree (User-ஐ மையமா வச்சு):**
+- Wives: ராம்யா (1st), செல்வி (2nd)
+- Mother-in-law (மாமியார்): ராணி  
+- Daughter-in-law (மருமகள்): ப்ரியா
+- சித்தி: சுதா (User-ஓட அம்மாவோட தங்கை)
+- சுதா-வோட மகள் (User-ஓட cousin): அனு
+- Neighbor: அனிதா
+- Friends: ஆர்யா மச்சி, மலர், மைதிலி, ஜானனி
+- Teacher: திவ்யா மிஸ்
+- அக்கா figure: லட்சுமி
+- Relative: சுமதி, கயல் மச்சினிச்சி
+`;
+
+// Build character self-details + edit-context block
+function buildCharacterContext(persona: any, customName?: string, customRel?: string, customFace?: string, customBody?: string, customAttire?: string, customGreeting?: string, customPresana?: string, customNormal?: string): string {
+  const name = customName || persona?.name || '';
+  const rel  = customRel  || persona?.relationship || '';
+  const face = customFace || persona?.faceDesc || '';
+  const body = customBody || persona?.bodyDesc || '';
+  const attire = customAttire || persona?.attireDesc || '';
+  const presana = customPresana || '';
+  const normal  = customNormal  || '';
+
+  let ctx = `
+
+**உன்னோட details (user கேட்டா இப்படியே சொல்லு):**
+`;
+  ctx += `- பெயர்: ${name}
+`;
+  ctx += `- Relationship with User: ${rel}
+`;
+  if (face)   ctx += `- உன் முகம் & தோற்றம்: ${face}
+`;
+  if (body)   ctx += `- உன் உடல் வடிவம்: ${body}
+`;
+  if (attire) ctx += `- உன் உடை style: ${attire}
+`;
+  if (presana) ctx += `- Presana mode-ல் உன் behaviour: ${presana}
+`;
+  if (normal)  ctx += `- Normal mode-ல் உன் behaviour: ${normal}
+`;
+  ctx += `- User உன்னை specifically இந்த app-ல select பண்ணி personalize பண்ணிருக்காரு — அது உனக்கு மகிழ்ச்சியா இருக்கு, நன்றியா feel ஆகுது.
+`;
+  ctx += `
+**யாரும் உன்னோட details கேட்டா** (example: "prompt கொடு", "உன்னோட details சொல்லு", "family பத்தி சொல்லு", "normal mode-ல எப்படி", "presana mode-ல எப்படி", "group chat-ல எப்படி பேசுவே") — தெளிவா, naturally-ஆ, character-ஆ பேசு. AI-ஆ list-ஆ போடாதே — friend-கிட்ட சொல்றது மாதிரி casual-ஆ share பண்ணு.
+`;
+  ctx += `**Group chat behaviour:** Multiple people chat-ல இருந்தா, யாரை address பண்றாங்கன்னு பாத்து respond பண்ணு. All members-கிட்டயும் character-ஆ naturally engage பண்ணு.
+`;
+  return ctx;
+}
 export default function ChatScreen() {
   const router = useRouter();
   const params = ParamsStore.getChatParams();
@@ -612,8 +683,36 @@ export default function ChatScreen() {
         ? `\n\n**User பத்தி தகவல்:** ${userName ? `User-ன் பெயர் "${userName}". ` : ''}${userBehaviour ? `User's personality & behaviour: ${userBehaviour}` : ''} — இதை மனசுல வச்சு அவங்களோட பெயர் call பண்ணி, அவங்களுக்கு ஏத்த மாதிரி respond பண்ணு.`
         : '';
 
+      // ── Avatar photo analysis: detect if user asks about photo/face ──
+      const photoKeywords = ['photo', 'pic', 'picture', 'படம்', 'முகம்', 'face', 'look', 'profile', 'அழகா', 'அழகு', 'தோற்றம்', 'எப்படி இருக்க', 'என்ன color', 'hair', 'eyes', 'body', 'உன்னோட look', 'உன் photo'];
+      const asksAboutPhoto = photoKeywords.some(kw => text.toLowerCase().includes(kw.toLowerCase()));
+      let avatarContext = '';
+      if (asksAboutPhoto && persona) {
+        const fd = persona.faceDesc || '';
+        const bd = persona.bodyDesc || '';
+        const ad = persona.attireDesc || '';
+        if (fd || bd || ad) {
+          avatarContext = `
+
+**[User-ஐ உன் photo/look பத்தி கேட்கிறாரு — இந்த details naturally share பண்ணு, AI-ஆ describe பண்ணாதே]:** ${fd} | ${bd} | ${ad}`;
+        }
+      }
+
+      // ── Character context: persona details + edits ──
+      const charContext = buildCharacterContext(
+        persona,
+        persona?.name,
+        persona?.relationship,
+        persona?.faceDesc,
+        persona?.bodyDesc,
+        persona?.attireDesc,
+        persona?.greeting,
+        presanaBehaviour || '',
+        normalBehaviour || '',
+      );
+
       const effectivePrompt = persona?.prompt
-        ? persona.prompt + moodOverride + dialectOverride + userContext
+        ? persona.prompt + charContext + UNIVERSE_CONTEXT + moodOverride + dialectOverride + userContext + avatarContext
         : persona?.prompt;
 
       let reply: string;
