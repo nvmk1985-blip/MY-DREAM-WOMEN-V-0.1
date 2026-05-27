@@ -274,10 +274,10 @@ router.post("/chat", async (req, res) => {
     let friendly: string;
     let status: number;
     if (noKeysAtAll) {
-      friendly = "⚙️ Server-ல AI key எதுவும் configure ஆகல. Admin-கிட்ட சொல்லுங்க, அல்லது Keys screen-ல உங்கள் own key add பண்ணுங்க.";
+      friendly = "⚙️ Server பிழை. சற்று நேரம் கழித்து மீண்டும் try பண்ணுங்க.";
       status = 503;
     } else if (quotaErrCount > 0) {
-      friendly = "🚫 எல்லா keys-உம் இன்னைக்கு daily limit ஆச்சு. நாளைக்கு try பண்ணுங்க, அல்லது Keys screen-ல உங்கள் own key add பண்ணுங்க.";
+      friendly = "⏳ இன்னைக்கு server busy. நாளைக்கு மீண்டும் try பண்ணுங்க.";
       status = 429;
     } else if (isKeyError(lastErr)) {
       friendly = "🔑 API key valid இல்ல. Keys screen-ல check பண்ணுங்க.";
