@@ -1150,9 +1150,7 @@ export default function ChatScreen() {
 
   const headerRight = () => (
     <View style={styles.headerBtns}>
-      <TouchableOpacity style={styles.headerBtn} onPress={() => router.push('/keys')}>
-        <Text style={styles.headerBtnIcon}>🔑</Text>
-      </TouchableOpacity>
+
       <TouchableOpacity style={styles.headerBtn} onPress={() => setShowStyleSheet(true)}>
         <Text style={styles.headerBtnIcon}>🎨</Text>
       </TouchableOpacity>
