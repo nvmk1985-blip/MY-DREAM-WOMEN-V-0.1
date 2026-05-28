@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import { ALL_PERSONAS, Persona } from '../constants/personas';
+import { ALL_PERSONAS, BASE_PROMPT, Persona } from '../constants/personas';
 import { ParamsStore } from '../context/params-store';
 import { uploadToCloudinary } from '../services/api';
 
@@ -26,6 +26,8 @@ export default function EditCharacterScreen() {
   const [avatarLetter, setAvatarLetter] = useState('');
   const [greeting, setGreeting] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
+  const [charOnly, setCharOnly] = useState('');
+  const [baseVisible, setBaseVisible] = useState(false);
   const [faceDesc, setFaceDesc] = useState('');
   const [bodyDesc, setBodyDesc] = useState('');
   const [attireDesc, setAttireDesc] = useState('');
@@ -61,7 +63,10 @@ export default function EditCharacterScreen() {
         setName(data.name ?? base.name);
         setAvatarLetter(data.avatarLetter ?? base.avatarLetter ?? base.emoji);
         setGreeting(data.greeting ?? base.greeting ?? '');
-        setSystemPrompt(data.prompt ?? base.prompt);
+        const fullPr = data.prompt ?? base.prompt;
+        setSystemPrompt(fullPr);
+        const mIdx = fullPr.indexOf('**இப்போ உன்னோட character:**');
+        setCharOnly(mIdx !== -1 ? fullPr.slice(mIdx + '**இப்போ உன்னோட character:**'.length).trimStart() : fullPr);
         setFaceDesc(data.faceDesc ?? base.faceDesc ?? '');
         setBodyDesc(data.bodyDesc ?? base.bodyDesc ?? '');
         setAttireDesc(data.attireDesc ?? base.attireDesc ?? '');
@@ -93,7 +98,7 @@ export default function EditCharacterScreen() {
     setSaving(true);
     try {
       const data = {
-        name, avatarLetter, greeting, prompt: systemPrompt,
+        name, avatarLetter, greeting, prompt: BASE_PROMPT + '\n**இப்போ உன்னோட character:**\n' + charOnly,
         faceDesc, bodyDesc, attireDesc, avatarPhotoUri,
         normalAvatarUri, presanaAvatarUri, relationship,
         presanaBehaviour, normalBehaviour,
@@ -459,28 +464,50 @@ export default function EditCharacterScreen() {
               />
             </View>
 
-            {/* SYSTEM PROMPT */}
+            {/* SYSTEM PROMPT — split: RED (base rules) + GREEN (char-specific) */}
             <View style={styles.card}>
               <Text style={styles.sectionLabel}>SYSTEM PROMPT (CHARACTER BEHAVIOR)</Text>
-              <Text style={{ color: '#888', fontSize: 11, marginBottom: 6 }}>
-                ✏️ Long-press → Cut / Copy / Paste / Select All work ஆகும்
-              </Text>
-              <TextInput
-                style={[styles.fieldInput, { minHeight: 200 }]}
-                value={systemPrompt}
-                onChangeText={setSystemPrompt}
-                multiline
-                textAlignVertical="top"
-                editable={true}
-                selectTextOnFocus={false}
-                contextMenuHidden={false}
-                scrollEnabled={false}
-                autoCorrect={false}
-                autoCapitalize="none"
-                spellCheck={false}
-                placeholder="Character behavior prompt..."
-                placeholderTextColor="#bbb"
-              />
+
+              {/* 🔴 RED — BASE RULES (collapsible) */}
+              <TouchableOpacity
+                onPress={() => setBaseVisible(v => !v)}
+                style={{ borderWidth: 2, borderColor: '#e53935', borderRadius: 8, marginBottom: 10, overflow: 'hidden' }}
+                activeOpacity={0.85}
+              >
+                <View style={{ backgroundColor: '#ffeaea', paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ color: '#c62828', fontWeight: '700', fontSize: 12 }}>🔴 BASE RULES (All characters)</Text>
+                  <Text style={{ color: '#c62828', fontSize: 13, fontWeight: '700' }}>{baseVisible ? '▲ மூடு' : '▼ திற'}</Text>
+                </View>
+                {baseVisible && (
+                  <View style={{ backgroundColor: '#fff5f5', padding: 10 }}>
+                    <Text style={{ color: '#555', fontSize: 11, lineHeight: 18 }} selectable>{BASE_PROMPT}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              {/* 🟢 GREEN — CHARACTER-SPECIFIC (always visible, editable) */}
+              <View style={{ borderWidth: 2, borderColor: '#2e7d32', borderRadius: 8, overflow: 'hidden' }}>
+                <View style={{ backgroundColor: '#e8f5e9', paddingHorizontal: 12, paddingVertical: 8 }}>
+                  <Text style={{ color: '#1b5e20', fontWeight: '700', fontSize: 12 }}>🟢 இந்த CHARACTER மட்டும் (திருத்தலாம்)</Text>
+                  <Text style={{ color: '#388e3c', fontSize: 10, marginTop: 2 }}>✏️ Long-press → Cut / Copy / Paste / Select All</Text>
+                </View>
+                <TextInput
+                  style={[styles.fieldInput, { minHeight: 200, borderWidth: 0, borderRadius: 0, backgroundColor: '#f9fff9' }]}
+                  value={charOnly}
+                  onChangeText={setCharOnly}
+                  multiline
+                  textAlignVertical="top"
+                  editable={true}
+                  selectTextOnFocus={false}
+                  contextMenuHidden={false}
+                  scrollEnabled={false}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  placeholder="இந்த character-ஓட தனித்துவமான behavior, story, personality..."
+                  placeholderTextColor="#bbb"
+                />
+              </View>
             </View>
 
             {/* MODE AVATARS */}
