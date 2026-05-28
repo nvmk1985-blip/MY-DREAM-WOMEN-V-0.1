@@ -163,4 +163,50 @@ router.delete("/cloudinary/delete", async (req, res) => {
   }
 });
 
+
+router.get("/cloudinary/videos", async (req, res) => {
+  try {
+    const folder = (req.query["folder"] as string) || "my-girls/videos";
+    const cl = cfg();
+    let resources: any[] = [];
+
+    try {
+      const r1 = await (cl.api as any).resources_by_asset_folder(folder, {
+        max_results: 100, resource_type: "video",
+      });
+      if (r1?.resources?.length) resources = r1.resources;
+    } catch {}
+
+    if (resources.length === 0) {
+      try {
+        const r2 = await cl.api.resources({
+          type: "upload", resource_type: "video",
+          prefix: folder + "/", max_results: 100,
+        });
+        if (r2?.resources?.length) resources = r2.resources;
+      } catch {}
+    }
+
+    if (resources.length === 0) {
+      try {
+        const r3 = await (cl.api as any).resources({
+          asset_folder: folder, max_results: 100, resource_type: "video",
+        });
+        if (r3?.resources?.length) resources = r3.resources;
+      } catch {}
+    }
+
+    const videos = resources.map((r: any) => ({
+      url: r.secure_url || r.url,
+      public_id: r.public_id,
+      format: r.format || "mp4",
+      duration: r.duration,
+    }));
+
+    res.json({ videos });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Video list failed" });
+  }
+});
+
 export default router;
