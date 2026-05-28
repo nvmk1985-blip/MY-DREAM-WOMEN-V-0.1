@@ -150,38 +150,57 @@ function detectPhotoStyle(
 }
 
 
-// ─── Universe context: every character knows the full cast ─────────────────
-const UNIVERSE_CONTEXT = `
-**இந்த app-ல் உள்ள எல்லா characters பத்தியும் உனக்கு தெரியும் — யாரும் கேட்டா தெளிவா சொல்லு:**
+// ─── Family Group contexts — each character knows only their family ─────────
+const FAMILY_1_CONTEXT = `
 
-1. ப்ரியா (மருமகள், 24) — User-ஓட மருமகள். கணவன் குடிகாரன், lonely wife, maamanaar (User)-கிட்ட drawn. Slim, long wavy black hair, oval face, fair medium skin.
-2. ஆர்யா மச்சி (தோழி, 23) — Wild best friend, boyish, no filter. Short curly hair, dusky petite frame.
-3. லட்சுமி அக்கா (அக்கா, 30) — அண்ணன் தோழி, secret crush on thambi (User). Long tied black hair, saree, graceful.
-4. திவ்யா மிஸ் (ஆசிரியை, 28) — Teacher, forbidden attraction to student (User). Specs, formal churidar, intelligent look.
+**உன் குடும்பம் / நெருங்கிய வட்டம் (Group 1) — இவங்கள மட்டும் நீ அறிவாய்:**
+1. ப்ரியா (மருமகள், 24) — User-ஓட மருமகள். கணவன் குடிகாரன், lonely, maamanaar (User)-கிட்ட drawn. Slim, wavy black hair, fair skin.
+2. லதா (வீட்டு வேலைகாரி, 25) — User வீட்டு வேலைகாரி. Humble, innocent, secretly attached to master. Simple saree, shy smile.
+3. காவ்யா (அண்ணி, 30) — User-ஓட அண்ணன் மனைவி (அண்ணி). Caring, warm, secret crush on thambi (User). Saree, graceful.
+4. திவ்யா மிஸ் (ஆசிரியை, 28) — Teacher, forbidden attraction to student (User). Specs, formal, intelligent.
 5. ராம்யா (மனைவி, 26) — User-ஓட அன்பான முதல் மனைவி. Possessive, loving, saree, bindi, mangalsutra.
-6. ராணி (மாமியார், 50) — User-ஓட மாமியார். Secretly attracted to son-in-law. Mature curvy, cotton saree, grey-streaked hair.
-7. சுதா சித்தி (சித்தி, 38) — User-ஓட அம்மாவோட தங்கை (சித்தி). Secret feelings for nephew (User). Curvy homemaker, cotton saree. சுதா-வுக்கு ஒரு மகள் அனு (college girl), User-ஓட wife ராம்யா, மாமியார் ராணி — எல்லாரும் ஒரே குடும்பம்.
-8. அனிதா (பக்கத்து வீட்டு ஆண்டி, 40) — Neighbor aunty, openly flirty. Full curvy figure, nighty/saree.
-9. மலர் (தோழி/Artist, 25) — Creative artist friend, romantic feelings for User. Wavy hair, boho style.
-10. சுமதி (relative, 32) — User-ஓட அண்ணன் மனைவி, secret crush. Hair in bun, churidar, academic.
-11. மைதிலி (நண்பி/Anchor, 28) — TN News anchor friend, bold confident. Formal saree, straight black hair.
-12. செல்வி (மனைவி 2nd, 27) — User-ஓட இரண்டாவது மனைவி. Jealous possessive, saree, mangalsutra.
-13. அனு (சித்தி சுதா-வோட மகள், 21) — சித்தி சுதா-வோட daughter, User-ஓட young friend. College girl, cheerful, dimpled smile.
+6. ராணி (மாமியார், 50) — User-ஓட மாமியார் (ராம்யாவோட அம்மா). Secretly attracted to son-in-law. Mature, cotton saree.
+9. லட்சுமி (முதலாளியின் மனைவி, 35) — User-ஓட முதலாளியின் மனைவி. Sophisticated, secretly drawn to User (employee). Silk saree.
+10. சுமதி (Thampi பொண்டாட்டி, 32) — User-ஓட நண்பன் Thampi-ஓட மனைவி. Smart, secret crush on User.
+
+**குடும்பம் 2-ல் யார் யார் என்று உனக்கு தெரியாது — அவங்களை பத்தி கேட்டா "தெரியல" சொல்லு.**
+`;
+
+const FAMILY_2_CONTEXT = `
+
+**உன் குடும்பம் / நெருங்கிய வட்டம் (Group 2) — இவங்கள மட்டும் நீ அறிவாய்:**
+7. சுதா (சித்தி, 38) — User-ஓட அம்மாவோட தங்கை (சித்தி). Curvy homemaker, secret feelings for nephew. Cotton saree.
+8. அனிதா (பக்கத்து வீட்டு ஆண்டி, 40) — Neighbor aunty, openly flirty. Full curvy, nighty/saree.
+11. மைதிலி (friend wife/Anchor, 28) — User-ஓட நண்பன் மனைவி + TN News anchor. Bold, confident, drawn to User.
+12. செல்வி (மனைவி 2nd, 27) — User-ஓட இரண்டாவது மனைவி. Jealous, possessive, saree, mangalsutra.
+13. அனு (சித்தி பொண்ணு, 16) — சித்தி சுதா-வோட மகள், school girl. Innocent, sweet, calls User 'அண்ணா'.
 14. ஜானனி (முன்னாள் காதலி, 25) — Ex-lover still in love with User. Curly hair, nostalgic.
 15. கயல் மச்சினிச்சி (26) — User-ஓட brother-in-law's sister, obvious crush. Office casual, playful.
+17. மாலதி (மாமியார் — செல்வியோட அம்மா, 55) — செல்வியோட அம்மா, User-ஓட 2nd மாமியார். Traditional, warm, secretly attracted to son-in-law.
 
-**குடும்ப tree (User-ஐ மையமா வச்சு):**
-- Wives: ராம்யா (1st), செல்வி (2nd)
-- Mother-in-law (மாமியார்): ராணி  
-- Daughter-in-law (மருமகள்): ப்ரியா
-- சித்தி: சுதா (User-ஓட அம்மாவோட தங்கை)
-- சுதா-வோட மகள் (User-ஓட cousin): அனு
-- Neighbor: அனிதா
-- Friends: ஆர்யா மச்சி, மலர், மைதிலி, ஜானனி
-- Teacher: திவ்யா மிஸ்
-- அக்கா figure: லட்சுமி
-- Relative: சுமதி, கயல் மச்சினிச்சி
+**குடும்பம் 1-ல் யார் யார் என்று உனக்கு தெரியாது — அவங்களை பத்தி கேட்டா "தெரியல" சொல்லு.**
 `;
+
+const GEETHA_BOTH_CONTEXT = `
+
+**நீ மட்டும் இரண்டு குடும்பங்களும் அறிவாய் — wisely, carefully பேசு:**
+
+குடும்பம் 1: ப்ரியா (மருமகள்), லதா (வேலைகாரி), காவ்யா (அண்ணி), திவ்யா (ஆசிரியை), ராம்யா (மனைவி 1st), ராணி (மாமியார்), லட்சுமி (முதலாளி மனைவி), சுமதி (Thampi wife)
+
+குடும்பம் 2: சுதா (சித்தி), அனிதா (ஆண்டி), மைதிலி (friend wife/Anchor), செல்வி (மனைவி 2nd), அனு (சித்தி பொண்ணு, school girl 16), ஜானனி (ex-காதலி), கயல் (மச்சினிச்சி), மாலதி (செல்வியோட அம்மா/மாமியார்)
+
+User-ஓட இரண்டு குடும்பங்களும் உனக்கு secret-ஆ தெரியும். யாரும் கேட்டா நீ carefully, wisely respond பண்ணு — ஒரு family-ஓட secret-ஐ இன்னொரு family-கிட்ட reveal பண்ணாதே.
+`;
+
+// Get family-group-specific context for each persona
+function getFamilyContext(personaId: string): string {
+  const FAMILY_1_IDS = ['priya', 'arya_machi', 'lakshmi', 'divya', 'ramya_wife', 'rani_mamiyar', 'malar', 'sumathi'];
+  const FAMILY_2_IDS = ['sudha', 'anitha', 'maithili', 'selvi_wife', 'anu', 'janani_ex', 'kayal_machinichi', 'malathi'];
+  if (personaId === 'geetha') return GEETHA_BOTH_CONTEXT;
+  if (FAMILY_1_IDS.includes(personaId)) return FAMILY_1_CONTEXT;
+  if (FAMILY_2_IDS.includes(personaId)) return FAMILY_2_CONTEXT;
+  return '';
+}
 
 // Build character self-details + edit-context block
 function buildCharacterContext(persona: any, customName?: string, customRel?: string, customFace?: string, customBody?: string, customAttire?: string, customGreeting?: string, customPresana?: string, customNormal?: string): string {
@@ -708,6 +727,13 @@ export default function ChatScreen() {
         ? `\n\n**User பத்தி தகவல்:** ${userName ? `User-ன் பெயர் "${userName}". ` : ''}${userBehaviour ? `User's personality & behaviour: ${userBehaviour}` : ''} — இதை மனசுல வச்சு அவங்களோட பெயர் call பண்ணி, அவங்களுக்கு ஏத்த மாதிரி respond பண்ணு.`
         : '';
 
+      // ── Image 2 & 3 context: normal mode photo + presana mode photo in system prompt ──
+      const imageContext = (normalAvatarUri || presanaAvatarUri)
+        ? `
+
+**[Character Photo Reference — உன் தோற்றம் இதில் இருக்கு:]:**${normalAvatarUri ? `\nImage 2 (Normal mode): ${normalAvatarUri}` : ''}${presanaAvatarUri ? `\nImage 3 (Presana mode): ${presanaAvatarUri}` : ''}\nUser உன் photos பத்தி கேட்டா இந்த images-ஐ reference-ஆ வச்சு describe பண்ணு.`
+        : '';
+
       // ── Avatar photo analysis: detect if user asks about photo/face ──
       const photoKeywords = ['photo', 'pic', 'picture', 'படம்', 'முகம்', 'face', 'look', 'profile', 'அழகா', 'அழகு', 'தோற்றம்', 'எப்படி இருக்க', 'என்ன color', 'hair', 'eyes', 'body', 'உன்னோட look', 'உன் photo'];
       const asksAboutPhoto = photoKeywords.some(kw => text.toLowerCase().includes(kw.toLowerCase()));
@@ -737,7 +763,7 @@ export default function ChatScreen() {
       );
 
       const effectivePrompt = persona?.prompt
-        ? persona.prompt + charContext + UNIVERSE_CONTEXT + moodOverride + dialectOverride + userContext + avatarContext
+        ? persona.prompt + charContext + getFamilyContext(persona.id) + imageContext + moodOverride + dialectOverride + userContext + avatarContext
         : persona?.prompt;
 
       let reply: string;
