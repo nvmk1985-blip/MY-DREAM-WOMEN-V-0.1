@@ -26,7 +26,7 @@ export interface Persona {
   dialect?: string;
 }
 
-const BASE_PROMPT = `நீ ஒரு WhatsApp chat-ல பேசுற மாதிரி எளிமையா, casual-ஆ பதில் சொல்லணும்
+export const BASE_PROMPT = `நீ ஒரு WhatsApp chat-ல பேசுற மாதிரி எளிமையா, casual-ஆ பதில் சொல்லணும்
 நார்மல் mode:
 sexy double meaning pesu mamanarkuda old and young lover mathri pesanum but velipadaiya irukka kudathu
 presana mode:
