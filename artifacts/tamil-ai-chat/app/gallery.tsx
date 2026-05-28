@@ -185,17 +185,17 @@ export default function GalleryScreen() {
 
   // ── Open phone folder browser ────────────────────────────────────
   const openFolderBrowser = async () => {
-    // 1. Always request permission directly — hook state may lag on first call
+    // Request full media permission (Android 13+ needs explicit re-request)
     let granted = false;
     try {
-      const result = await MediaLibrary.requestPermissionsAsync(false);
+      // No argument = read+write; needed for getAlbumsAsync on Android 13+
+      const result = await MediaLibrary.requestPermissionsAsync();
       granted = result.granted;
     } catch {
       granted = false;
     }
 
     if (!granted) {
-      // Fallback: try hook-based request once more
       try {
         const result2 = await requestMlPermission();
         granted = result2?.granted ?? false;
@@ -205,24 +205,39 @@ export default function GalleryScreen() {
     if (!granted) {
       Alert.alert(
         'Permission வேணும்',
-        'Settings → My Girls → Permissions → Files & Media → Allow all\n\nPermission கொடுத்தாலும் வேலை செய்யலன்னா, App-ஐ close பண்ணி திரும்ப open பண்ணுங்க.',
+        'Settings > Apps > My Girls > Permissions > Files & Media > Allow all\n\nAllow பண்ணிட்டு App close செய்து மீண்டும் திறங்க.',
         [{ text: 'OK' }],
       );
       return;
     }
 
-    // 2. Load phone albums
+    // Load phone albums — retry once if permission just granted
     setLoadingAlbums(true);
     setShowAlbums(true);
-    try {
-      const all = await MediaLibrary.getAlbumsAsync({ includeSmartAlbums: true });
-      // Sort: non-empty first, then alphabetical
-      all.sort((a, b) => (b.assetCount ?? 0) - (a.assetCount ?? 0));
-      setPhoneAlbums(all);
-    } catch (e: any) {
-      Alert.alert('பிழை', 'Folders load ஆகல: ' + (e?.message ?? ''));
-      setShowAlbums(false);
-    }
+    let retried = false;
+    const loadAlbums = async () => {
+      try {
+        const all = await MediaLibrary.getAlbumsAsync({ includeSmartAlbums: true });
+        all.sort((a, b) => (b.assetCount ?? 0) - (a.assetCount ?? 0));
+        setPhoneAlbums(all);
+      } catch (e: any) {
+        const msg: string = e?.message ?? '';
+        if (!retried && msg.toLowerCase().includes('permission')) {
+          // Permission just granted but Android hasn't propagated yet — retry once
+          retried = true;
+          await new Promise(r => setTimeout(r, 800));
+          await MediaLibrary.requestPermissionsAsync();
+          return loadAlbums();
+        }
+        Alert.alert(
+          'Permission பிழை',
+          'Settings > Apps > My Girls > Permissions > Files & Media > Allow all\nApp close செய்து மீண்டும் திறங்க.',
+          [{ text: 'OK' }],
+        );
+        setShowAlbums(false);
+      }
+    };
+    await loadAlbums();
     setLoadingAlbums(false);
   };
 
