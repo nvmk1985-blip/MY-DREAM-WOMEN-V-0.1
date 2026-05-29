@@ -34,6 +34,8 @@ export default function EditCharacterScreen() {
   const [avatarPhotoUri, setAvatarPhotoUri] = useState<string | undefined>(undefined);
   const [normalAvatarUri, setNormalAvatarUri] = useState<string | undefined>(undefined);
   const [presanaAvatarUri, setPresanaAvatarUri] = useState<string | undefined>(undefined);
+  const [showModeCloud, setShowModeCloud] = useState<'normal' | 'presana' | null>(null);
+  const [modeCloudInput, setModeCloudInput] = useState('');
   const [relationship, setRelationship] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -145,6 +147,15 @@ export default function EditCharacterScreen() {
     setShowCloudUrl(false);
   };
 
+  const applyModeCloudUrl = () => {
+    const url = modeCloudInput.trim();
+    if (!url) { Alert.alert('URL Enter பண்ணுங்க'); return; }
+    if (showModeCloud === 'normal') setNormalAvatarUri(url);
+    else if (showModeCloud === 'presana') setPresanaAvatarUri(url);
+    setModeCloudInput('');
+    setShowModeCloud(null);
+  };
+
   const pickModeAvatar = async (mode: 'normal' | 'presana') => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { Alert.alert('Permission', 'Gallery permission வேணும்'); return; }
@@ -162,8 +173,7 @@ export default function EditCharacterScreen() {
           if (mode === 'normal') setNormalAvatarUri(cloudUrl.url);
           else setPresanaAvatarUri(cloudUrl.url);
         } catch {
-          if (mode === 'normal') setNormalAvatarUri(asset.uri);
-          else setPresanaAvatarUri(asset.uri);
+          Alert.alert('Upload Failed', 'Cloud upload தோல்வி — ☁️ Cloud URL option use பண்ணுங்க');
         } finally { setUploadingAvatar(false); }
       } else {
         if (mode === 'normal') setNormalAvatarUri(asset.uri);
@@ -267,6 +277,34 @@ export default function EditCharacterScreen() {
                   <Text style={{ color: '#555', fontWeight: '600' }}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.cloudApply} onPress={applyCloudUrl}>
+                  <Text style={{ color: '#fff', fontWeight: '600' }}>Apply</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal visible={showModeCloud !== null} transparent animationType="fade">
+          <View style={styles.cloudOverlay}>
+            <View style={styles.cloudModal}>
+              <Text style={styles.cloudTitle}>
+                {showModeCloud === 'normal' ? '😇 Normal Avatar URL' : '😈 Presana Avatar URL'}
+              </Text>
+              <Text style={styles.cloudSub}>Cloudinary-ல் இருந்து photo URL paste பண்ணுங்க</Text>
+              <TextInput
+                style={styles.cloudInput}
+                value={modeCloudInput}
+                onChangeText={setModeCloudInput}
+                placeholder="https://res.cloudinary.com/..."
+                placeholderTextColor="#aaa"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <View style={styles.cloudBtns}>
+                <TouchableOpacity style={styles.cloudCancel} onPress={() => setShowModeCloud(null)}>
+                  <Text style={{ color: '#555', fontWeight: '600' }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.cloudApply} onPress={applyModeCloudUrl}>
                   <Text style={{ color: '#fff', fontWeight: '600' }}>Apply</Text>
                 </TouchableOpacity>
               </View>
@@ -531,6 +569,12 @@ export default function EditCharacterScreen() {
                       <Text style={{ color: '#075E54', fontSize: 12 }}>🗑️ Remove</Text>
                     </TouchableOpacity>
                   )}
+                  <TouchableOpacity
+                    style={{ marginTop: 8, paddingVertical: 5, paddingHorizontal: 10, backgroundColor: '#E3F2FD', borderRadius: 12 }}
+                    onPress={() => { setModeCloudInput(''); setShowModeCloud('normal'); }}
+                  >
+                    <Text style={{ color: '#1565C0', fontSize: 11, fontWeight: '600' }}>☁️ Cloud URL</Text>
+                  </TouchableOpacity>
                 </View>
                 <View style={{ flex: 1, alignItems: 'center' }}>
                   <Text style={[styles.sectionLabel, { color: '#E91E63', marginBottom: 8 }]}>😈 PRESANA</Text>
@@ -548,6 +592,12 @@ export default function EditCharacterScreen() {
                       <Text style={{ color: '#E91E63', fontSize: 12 }}>🗑️ Remove</Text>
                     </TouchableOpacity>
                   )}
+                  <TouchableOpacity
+                    style={{ marginTop: 8, paddingVertical: 5, paddingHorizontal: 10, backgroundColor: '#FCE4EC', borderRadius: 12 }}
+                    onPress={() => { setModeCloudInput(''); setShowModeCloud('presana'); }}
+                  >
+                    <Text style={{ color: '#C62828', fontSize: 11, fontWeight: '600' }}>☁️ Cloud URL</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
