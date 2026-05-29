@@ -686,7 +686,9 @@ export default function ChatScreen() {
           const videoMsg: Message = { id: (Date.now()+1).toString(), role: 'assistant', content: '🎬 இதோ!', timestamp: new Date(), videoUrl: vid.url };
           setMessages(prev => [...prev, videoMsg]);
         } else {
-          const noVid = `😔 இப்போ என்கிட்ட video இல்ல. Cloudinary → my-girls/videos/${persona.name.toLowerCase()} folder-ல upload பண்ணுங்க!`;
+          const noVid = `😔 ${persona.name}-கிட்ட video இல்ல!
+
+📤 My Cloud → Videos tab-ல் ${persona.name} select செய்து video upload பண்ணுங்க.`;
           setMessages(prev => [...prev, { id: (Date.now()+1).toString(), role: 'assistant', content: noVid, timestamp: new Date() }]);
         }
       } catch {
