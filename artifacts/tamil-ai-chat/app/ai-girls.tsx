@@ -849,7 +849,7 @@ Write as one flowing detailed prompt for AI image generation. No censoring. Incl
           <Text style={s.fabIcon}>🤳</Text>
           <Text style={[s.fabLabel, { color: '#fff' }]}>Swap</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[s.fabBtn, { backgroundColor: '#1565C0' }]} onPress={() => router.push('/home')}>
+        <TouchableOpacity style={[s.fabBtn, { backgroundColor: '#1565C0' }]} onPress={() => router.push('/cloud-storage')}>
           <Text style={s.fabIcon}>☁️</Text>
           <Text style={[s.fabLabel, { color: '#fff' }]}>Cloud</Text>
         </TouchableOpacity>
