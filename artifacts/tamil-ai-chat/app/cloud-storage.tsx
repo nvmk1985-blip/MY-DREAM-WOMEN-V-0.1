@@ -99,6 +99,7 @@ export default function CloudStorageScreen() {
   const [videos, setVideos] = useState<CloudVideo[]>([]);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [selectedPersona, setSelectedPersona] = useState('');
+  const [selectedVideoPersona, setSelectedVideoPersona] = useState<string | null>(null);
   const [loadingVideos, setLoadingVideos] = useState(false);
 
   const [secretsModal, setSecretsModal] = useState(false);
@@ -530,113 +531,144 @@ export default function CloudStorageScreen() {
         {/* ── VIDEO TAB ─────────────────────────────────────────── */}
         {activeCategory === 'videos' ? (
           <View style={styles.videoSection}>
-            {/* Upload Card */}
-            <View style={styles.videoUploadCard}>
-              <Text style={styles.videoUploadTitle}>🎬 Video Upload</Text>
-              <Text style={styles.videoUploadHint}>
-                Chat-ல் "video வேணும்" என்று type பண்ணினா இந்த videos வரும்!{'\n'}
-                Folder: my-girls/videos/[persona name]
-              </Text>
-
-              {/* Persona picker */}
-              <Text style={styles.videoPersonaLabel}>👩 Girl தேர்வு செய்யுங்கள்:</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-                <View style={styles.personaRow}>
-                  {femalePersonas.map((p: any) => (
-                    <TouchableOpacity
-                      key={p.id}
-                      style={[styles.personaChip, selectedPersona === p.name && styles.personaChipActive]}
-                      onPress={() => setSelectedPersona(p.name)}
-                    >
-                      <Text style={styles.personaChipEmoji}>{p.emoji}</Text>
-                      <Text style={[styles.personaChipName, selectedPersona === p.name && styles.personaChipNameActive]}>
-                        {p.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+            {selectedVideoPersona ? (
+              /* ── Subfolder view for selected character ── */
+              <View>
+                {/* Header with back button */}
+                <View style={styles.subfolderHeader}>
+                  <TouchableOpacity style={styles.backBtn} onPress={() => setSelectedVideoPersona(null)}>
+                    <Text style={styles.backBtnTxt}>← Back</Text>
+                  </TouchableOpacity>
+                  <View style={styles.subfolderTitleWrap}>
+                    <Text style={styles.subfolderTitle}>
+                      {(femalePersonas.find((p: any) => p.name === selectedVideoPersona) as any)?.emoji || '👩'} {selectedVideoPersona}
+                    </Text>
+                    <Text style={styles.subfolderPath}>
+                      📁 my-girls/videos/{selectedVideoPersona.toLowerCase()}/
+                    </Text>
+                  </View>
                 </View>
-              </ScrollView>
 
-              {selectedPersona ? (
-                <View style={styles.selectedPersonaBox}>
-                  <Text style={styles.selectedPersonaText}>
-                    📁 Folder: my-girls/videos/{selectedPersona.toLowerCase()}/
-                  </Text>
-                </View>
-              ) : null}
+                {/* Upload button */}
+                <TouchableOpacity
+                  style={[styles.videoUploadBtn, uploadingVideo && { opacity: 0.5 }]}
+                  onPress={() => { setSelectedPersona(selectedVideoPersona); uploadVideo(); }}
+                  disabled={uploadingVideo}
+                >
+                  {uploadingVideo
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={styles.videoUploadBtnTxt}>📤 Video Upload பண்ணுங்கள்</Text>
+                  }
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[styles.videoUploadBtn, (uploadingVideo || !selectedPersona) && { opacity: 0.5 }]}
-                onPress={uploadVideo}
-                disabled={uploadingVideo || !selectedPersona}
-              >
-                {uploadingVideo
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={styles.videoUploadBtnTxt}>📤 Video தேர்வு செய்து Upload</Text>
-                }
-              </TouchableOpacity>
-            </View>
+                {/* Sync button */}
+                <TouchableOpacity
+                  style={[styles.syncVideosBtn, loadingVideos && { opacity: 0.6 }]}
+                  onPress={syncVideos}
+                  disabled={loadingVideos}
+                >
+                  {loadingVideos
+                    ? <ActivityIndicator color="#6C63FF" size="small" />
+                    : <Text style={styles.syncVideosBtnTxt}>🔄 Cloud Sync</Text>
+                  }
+                </TouchableOpacity>
 
-            {/* Sync button */}
-            <TouchableOpacity
-              style={[styles.syncVideosBtn, loadingVideos && { opacity: 0.6 }]}
-              onPress={syncVideos}
-              disabled={loadingVideos}
-            >
-              {loadingVideos
-                ? <ActivityIndicator color="#fff" size="small" />
-                : <Text style={styles.syncVideosBtnTxt}>🔄 Cloud-ல் உள்ள Videos Sync</Text>
-              }
-            </TouchableOpacity>
-
-            {/* Video list */}
-            {videos.length === 0 ? (
-              <View style={styles.videoEmpty}>
-                <Text style={styles.videoEmptyIcon}>🎬</Text>
-                <Text style={styles.videoEmptyTitle}>Video இல்லை</Text>
-                <Text style={styles.videoEmptyHint}>
-                  மேலே girl-ஐ தேர்வு செய்து video upload பண்ணுங்கள்.{'\n'}
-                  அல்லது Cloudinary-ல் manual ஆக upload செய்யலாம்:{'\n'}
-                  my-girls/videos/[girl name]/
-                </Text>
+                {/* Video list for this character */}
+                {videos.filter(v => v.personaName === selectedVideoPersona).length === 0 ? (
+                  <View style={styles.videoEmpty}>
+                    <Text style={styles.videoEmptyIcon}>🎬</Text>
+                    <Text style={styles.videoEmptyTitle}>Video இல்லை</Text>
+                    <Text style={styles.videoEmptyHint}>
+                      மேலே Upload பண்ணுங்கள்{'\n'}அல்லது Cloud Sync பண்ணுங்கள்
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.videoList}>
+                    {videos.filter(v => v.personaName === selectedVideoPersona).map((vid) => (
+                      <View key={vid.public_id} style={styles.videoItem}>
+                        <View style={styles.videoItemLeft}>
+                          <Text style={styles.videoItemIcon}>🎬</Text>
+                          <View style={styles.videoItemInfo}>
+                            <Text style={styles.videoItemPersona} numberOfLines={1}>
+                              {vid.public_id.split('/').pop()}
+                            </Text>
+                            <Text style={styles.videoItemDate}>
+                              {new Date(vid.createdAt).toLocaleDateString('ta-IN')} · {vid.format || 'mp4'}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.videoItemBtns}>
+                          <TouchableOpacity
+                            style={styles.videoPlayBtn}
+                            onPress={() => Linking.openURL(vid.url)}
+                          >
+                            <Text style={styles.videoPlayBtnTxt}>▶</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.videoDeleteBtn}
+                            onPress={() =>
+                              Alert.alert('Delete?', 'Video delete பண்ணட்டுமா?', [
+                                { text: 'Cancel', style: 'cancel' },
+                                { text: 'Delete', style: 'destructive', onPress: () => deleteVideo(vid) },
+                              ])
+                            }
+                          >
+                            <Text style={styles.videoDeleteBtnTxt}>🗑️</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </View>
             ) : (
-              <View style={styles.videoList}>
-                {videos.map((vid) => (
-                  <View key={vid.public_id} style={styles.videoItem}>
-                    <View style={styles.videoItemLeft}>
-                      <Text style={styles.videoItemIcon}>🎬</Text>
-                      <View style={styles.videoItemInfo}>
-                        <Text style={styles.videoItemPersona}>{vid.personaName}</Text>
-                        <Text style={styles.videoItemDate}>
-                          {new Date(vid.createdAt).toLocaleDateString('ta-IN')} · {vid.format || 'mp4'}
-                        </Text>
-                        <Text style={styles.videoItemId} numberOfLines={1}>
-                          {vid.public_id.split('/').pop()}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.videoItemBtns}>
+              /* ── Character grid view ── */
+              <View>
+                <Text style={styles.videoGridTitle}>👩 Girl தேர்வு செய்யுங்கள்</Text>
+                <Text style={styles.videoGridHint}>
+                  Girl card-ஐ tap பண்ணி video upload பண்ணுங்கள்.{'\n'}
+                  Chat-ல் "video வேணும்" என்று கேட்டால் அந்த video வரும்!
+                </Text>
+
+                {/* Sync all */}
+                <TouchableOpacity
+                  style={[styles.syncVideosBtn, loadingVideos && { opacity: 0.6 }]}
+                  onPress={syncVideos}
+                  disabled={loadingVideos}
+                >
+                  {loadingVideos
+                    ? <ActivityIndicator color="#6C63FF" size="small" />
+                    : <Text style={styles.syncVideosBtnTxt}>🔄 எல்லா Girls Videos Sync</Text>
+                  }
+                </TouchableOpacity>
+
+                {/* Character grid */}
+                <View style={styles.characterGrid}>
+                  {femalePersonas.map((p: any) => {
+                    const count = videos.filter(v => v.personaName === p.name).length;
+                    return (
                       <TouchableOpacity
-                        style={styles.videoPlayBtn}
-                        onPress={() => Linking.openURL(vid.url)}
+                        key={p.id}
+                        style={styles.characterCard}
+                        onPress={() => setSelectedVideoPersona(p.name)}
+                        activeOpacity={0.75}
                       >
-                        <Text style={styles.videoPlayBtnTxt}>▶</Text>
+                        <View style={[styles.characterAvatar, { backgroundColor: p.avatarColor }]}>
+                          <Text style={styles.characterAvatarTxt}>{p.emoji}</Text>
+                          {count > 0 && (
+                            <View style={styles.videoBadge}>
+                              <Text style={styles.videoBadgeTxt}>{count}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.characterName} numberOfLines={2}>{p.name}</Text>
+                        <Text style={styles.characterVideoCount}>
+                          {count > 0 ? `🎬 ${count}` : 'tap to add'}
+                        </Text>
                       </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.videoDeleteBtn}
-                        onPress={() =>
-                          Alert.alert('Delete?', `"${vid.personaName}" video delete பண்ணட்டுமா?`, [
-                            { text: 'Cancel', style: 'cancel' },
-                            { text: 'Delete', style: 'destructive', onPress: () => deleteVideo(vid) },
-                          ])
-                        }
-                      >
-                        <Text style={styles.videoDeleteBtnTxt}>🗑️</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
+                    );
+                  })}
+                </View>
               </View>
             )}
           </View>
@@ -1207,4 +1239,41 @@ const styles = StyleSheet.create({
     paddingVertical: 14, alignItems: 'center',
   },
   secSaveTxt: { color: '#fff', fontWeight: '800', fontSize: 15 },
+
+  // ── Video subfolder & character grid styles ──
+  subfolderHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#16213e', borderRadius: 14, padding: 14,
+    marginBottom: 14, borderWidth: 1, borderColor: '#6C63FF',
+  },
+  backBtn: {
+    backgroundColor: '#6C63FF', borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 8,
+  },
+  backBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  subfolderTitleWrap: { flex: 1 },
+  subfolderTitle: { color: '#fff', fontSize: 15, fontWeight: 'bold', marginBottom: 3 },
+  subfolderPath: { color: '#6C63FF', fontSize: 10, fontFamily: 'monospace' },
+  videoGridTitle: { color: '#fff', fontSize: 17, fontWeight: 'bold', marginBottom: 6, paddingHorizontal: 2 },
+  videoGridHint: { color: '#aaa', fontSize: 12, lineHeight: 18, marginBottom: 14, paddingHorizontal: 2 },
+  characterGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingBottom: 30 },
+  characterCard: {
+    width: (width - 68) / 3,
+    backgroundColor: '#16213e', borderRadius: 16, padding: 12,
+    alignItems: 'center', borderWidth: 1.5, borderColor: '#2a2a4a',
+  },
+  characterAvatar: {
+    width: 54, height: 54, borderRadius: 27,
+    justifyContent: 'center', alignItems: 'center', marginBottom: 8,
+  },
+  characterAvatarTxt: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  videoBadge: {
+    position: 'absolute', top: -4, right: -4,
+    backgroundColor: '#6C63FF', borderRadius: 10,
+    minWidth: 20, height: 20, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: '#16213e',
+  },
+  videoBadgeTxt: { color: '#fff', fontSize: 9, fontWeight: 'bold' },
+  characterName: { color: '#fff', fontSize: 10, fontWeight: '700', textAlign: 'center', marginBottom: 3 },
+  characterVideoCount: { color: '#888', fontSize: 9, textAlign: 'center' },
 });
