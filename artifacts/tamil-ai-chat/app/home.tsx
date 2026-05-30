@@ -32,6 +32,7 @@ const CATEGORIES = [
   { key: 'notes',       label: 'Notes',       emoji: '📝',  bg: '#E67E22', route: '/notes' },
   { key: 'keys',        label: 'Keys',        emoji: '🔑',  bg: '#F0C040', route: '/keys' },
   { key: 'cloud',       label: 'Cloud',       emoji: '☁️',  bg: '#1ABC9C', route: '/cloud-storage' },
+  { key: 'videos',      label: 'Videos',      emoji: '🎬',  bg: '#1565C0', route: '/videos' },
 ];
 
 type CloudPhoto = { uri: string };
