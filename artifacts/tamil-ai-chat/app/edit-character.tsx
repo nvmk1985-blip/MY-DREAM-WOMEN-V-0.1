@@ -51,6 +51,7 @@ export default function EditCharacterScreen() {
 
   // Section B expand state
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [basePromptEdit, setBasePromptEdit] = useState('');
 
   useEffect(() => {
     const load = async () => {
@@ -83,6 +84,7 @@ export default function EditCharacterScreen() {
         setUserNormalBeh(data.userNormalBeh ?? '');
         setUserPresanaBeh(data.userPresanaBeh ?? '');
         setUserBodyDesc(data.userBodyDesc ?? '');
+        setBasePromptEdit(data.basePromptEdit ?? BASE_PROMPT);
       } catch {}
     };
     load();
@@ -507,21 +509,41 @@ export default function EditCharacterScreen() {
               <Text style={styles.sectionLabel}>SYSTEM PROMPT (CHARACTER BEHAVIOR)</Text>
 
               {/* 🔴 RED — BASE RULES (collapsible) */}
-              <TouchableOpacity
-                onPress={() => setBaseVisible(v => !v)}
-                style={{ borderWidth: 2, borderColor: '#e53935', borderRadius: 8, marginBottom: 10, overflow: 'hidden' }}
-                activeOpacity={0.85}
-              >
-                <View style={{ backgroundColor: '#ffeaea', paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ borderWidth: 2, borderColor: '#e53935', borderRadius: 8, marginBottom: 10, overflow: 'hidden' }}>
+                <TouchableOpacity
+                  onPress={() => setBaseVisible(v => !v)}
+                  style={{ backgroundColor: '#ffeaea', paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                  activeOpacity={0.85}
+                >
                   <Text style={{ color: '#c62828', fontWeight: '700', fontSize: 12 }}>🔴 BASE RULES (All characters)</Text>
                   <Text style={{ color: '#c62828', fontSize: 13, fontWeight: '700' }}>{baseVisible ? '▲ மூடு' : '▼ திற'}</Text>
-                </View>
+                </TouchableOpacity>
                 {baseVisible && (
-                  <View style={{ backgroundColor: '#fff5f5', padding: 10 }}>
-                    <Text style={{ color: '#555', fontSize: 11, lineHeight: 18 }} selectable>{BASE_PROMPT}</Text>
+                  <View style={{ backgroundColor: '#fff5f5' }}>
+                    <Text style={{ color: '#388e3c', fontSize: 10, paddingHorizontal: 10, paddingTop: 6 }}>✏️ Long-press → Cut / Copy / Paste / Select All</Text>
+                    <TextInput
+                      style={[styles.fieldInput, { minHeight: 200, borderWidth: 0, borderRadius: 0, backgroundColor: '#fff5f5', fontSize: 11, lineHeight: 18, color: '#555' }]}
+                      value={basePromptEdit}
+                      onChangeText={setBasePromptEdit}
+                      multiline
+                      textAlignVertical="top"
+                      editable={true}
+                      selectTextOnFocus={false}
+                      contextMenuHidden={false}
+                      scrollEnabled={false}
+                      autoCorrect={false}
+                      autoCapitalize="none"
+                      spellCheck={false}
+                    />
+                    <TouchableOpacity
+                      onPress={() => setBasePromptEdit(BASE_PROMPT)}
+                      style={{ margin: 8, paddingVertical: 6, paddingHorizontal: 14, backgroundColor: '#ffcdd2', borderRadius: 12, alignSelf: 'flex-start' }}
+                    >
+                      <Text style={{ color: '#c62828', fontSize: 11, fontWeight: '600' }}>↺ Default-க்கு Reset</Text>
+                    </TouchableOpacity>
                   </View>
                 )}
-              </TouchableOpacity>
+              </View>
 
               {/* 🟢 GREEN — CHARACTER-SPECIFIC (always visible, editable) */}
               <View style={{ borderWidth: 2, borderColor: '#2e7d32', borderRadius: 8, overflow: 'hidden' }}>
