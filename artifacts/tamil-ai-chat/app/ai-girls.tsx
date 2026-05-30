@@ -621,8 +621,17 @@ export default function AIGirlsScreen() {
         base64 = await FileSystem.readAsStringAsync(tempUri, { encoding: FileSystem.EncodingType.Base64 });
         await FileSystem.deleteAsync(tempUri, { idempotent: true });
       }
-      const keysRaw = await AsyncStorage.getItem('api_keys_store');
-      const apiKey: string | undefined = keysRaw ? JSON.parse(keysRaw)['gemini'] : undefined;
+      const [keysRaw, enabledRaw] = await Promise.all([
+        AsyncStorage.getItem('api_keys_store'),
+        AsyncStorage.getItem('api_keys_enabled_v1'),
+      ]);
+      const storedKeys: Record<string, string> = keysRaw ? JSON.parse(keysRaw) : {};
+      const enabledMap: Record<string, boolean> = enabledRaw ? JSON.parse(enabledRaw) : {};
+      let apiKey: string | undefined;
+      for (let gi = 1; gi <= 13; gi++) {
+        const gk = storedKeys[`gemini_${gi}`];
+        if (gk?.trim() && enabledMap[`gemini_${gi}`]) { apiKey = gk.trim(); break; }
+      }
       if (!apiKey) { setScriptText('🔑 Home → Keys → Gemini API key enter பண்ணுங்க'); setScriptLoading(false); return; }
       const resp = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
