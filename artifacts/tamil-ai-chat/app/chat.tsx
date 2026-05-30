@@ -840,8 +840,12 @@ export default function ChatScreen() {
         );
       } else if (isKeyError) {
         Alert.alert(
-          '⚠️ பிழை',
-          'Server error ஆச்சு. மீண்டும் try பண்ணுங்க.',
+          '🔑 API Key பிழை',
+          'Gemini API key valid இல்ல அல்லது quota தீர்ந்துவிட்டது.\n\nKeys screen-ல் key சரியா இருக்கா check பண்ணுங்க.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: '🔑 Keys Screen திற', onPress: () => router.push('/keys') },
+          ],
         );
       } else {
         Alert.alert('பிழை', errMsg || 'பதில் வரவில்லை. மீண்டும் முயல்க.');
