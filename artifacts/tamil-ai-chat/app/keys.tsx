@@ -31,6 +31,9 @@ const DEFAULT_KEYS: Omit<ApiKeyEntry, 'value' | 'expanded' | 'status'>[] = [
   { id: 'github',     label: 'GitHub Token', site: 'github.com',        enabled: false },
   { id: 'cloudinary', label: 'Cloudinary',   site: 'cloudinary.com',    enabled: false },
   { id: 'hf',         label: 'HuggingFace',  site: 'huggingface.co',    enabled: false },
+  { id: 'openrouter',  label: 'OpenRouter API', site: 'openrouter.ai',     enabled: false },
+  { id: 'fal',         label: 'FAL AI',          site: 'fal.ai',            enabled: false },
+  { id: 'aifaceswap',  label: 'AI FaceSwap',     site: 'aifaceswap.ai',     enabled: false },
 ];
 
 // ── Key testers ──────────────────────────────────────────────────
@@ -64,12 +67,22 @@ async function testGroqKey(key: string): Promise<KeyStatus> {
   } catch { return 'error'; }
 }
 
+async function testOpenRouterKey(key: string): Promise<KeyStatus> {
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/auth/key', {
+      headers: { Authorization: `Bearer ${key}`, 'HTTP-Referer': 'https://my-girls.app' },
+    });
+    return res.ok ? 'ok' : 'error';
+  } catch { return 'error'; }
+}
+
 async function testKey(id: string, value: string): Promise<KeyStatus> {
   if (!value.trim()) return 'idle';
   if (id.startsWith('gemini')) return testGeminiKey(value);
   if (id === 'hf') return testHuggingFaceKey(value);
   if (id === 'groq') return testGroqKey(value);
-  return 'ok'; // can't verify github/expo/cloudinary easily
+  if (id === 'openrouter') return testOpenRouterKey(value);
+  return 'ok'; // fal/aifaceswap/github/expo/cloudinary — no simple test
 }
 
 // ── Status badge ─────────────────────────────────────────────────
@@ -172,6 +185,13 @@ export default function KeysScreen() {
       setKeys(prev => prev.map(k => k.id === 'groq' ? { ...k, status: 'checking' } : k));
       testGroqKey(parsed['groq']).then(status => {
         setKeys(prev => prev.map(k => k.id === 'groq' ? { ...k, status } : k));
+      });
+    }
+    // Check OpenRouter (needed for Photo to Script image analysis)
+    if (parsed['openrouter']?.trim()) {
+      setKeys(prev => prev.map(k => k.id === 'openrouter' ? { ...k, status: 'checking' } : k));
+      testOpenRouterKey(parsed['openrouter']).then(status => {
+        setKeys(prev => prev.map(k => k.id === 'openrouter' ? { ...k, status } : k));
       });
     }
   };
