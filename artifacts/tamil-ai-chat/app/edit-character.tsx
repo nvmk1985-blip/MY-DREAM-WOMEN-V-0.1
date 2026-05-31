@@ -437,10 +437,7 @@ export default function EditCharacterScreen() {
                 onChangeText={setAvatarReflectionPrompt}
                 multiline
                 textAlignVertical="top"
-                placeholder={'யூசர் avatar-ல் பார்க்குற தோற்றம் (முடி நீளம்/நிறம், முகம், சருமம்) conversation-ல் naturally mention பண்ணு.
-யூசர் தோற்றம் பத்தி கேட்டால் avatar-ல் பார்த்தது போல் full detail-ஆ respond பண்ணு.
-Character-ஓட own photos-ல் பார்க்குற appearance feel பண்ணி பேசு.
-Example: நீள முடி user → "உன் நீள முடி அழகா இருக்கு, எப்படி maintain பண்ற?"'}
+                placeholder={"யூசர் avatar-ல் பார்க்குற தோற்றம் (முடி நீளம்/நிறம், முகம், சருமம்) conversation-ல் naturally mention பண்ணு.\nயூசர் தோற்றம் பத்தி கேட்டால் avatar-ல் பார்த்தது போல் full detail-ஆ respond பண்ணு.\nCharacter-ஓட own photos-ல் பார்க்குற appearance feel பண்ணி பேசு.\nExample: நீள முடி user → \"உன் நீள முடி அழகா இருக்கு, எப்படி maintain பண்ற?\""}
                 placeholderTextColor="#bbb"
               />
               <TouchableOpacity
