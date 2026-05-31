@@ -2077,8 +2077,7 @@ export default function ChatScreen() {
           <TouchableOpacity style={{ flex: 1, backgroundColor: '#00000066' }} activeOpacity={1} onPress={() => setShowKiruthikaDetails(false)}>
             <TouchableOpacity activeOpacity={1} style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36 }}>
               <Text style={{ fontSize: 17, fontWeight: 'bold', color: '#FF6B9D', marginBottom: 6 }}>📝 என்னோட Details — கிருத்திகா-க்கு</Text>
-              <Text style={{ fontSize: 12, color: '#888', marginBottom: 12, lineHeight: 18 }}>{"உன்னோட உண்மையான details இங்க type பண்ணு. கிருத்திகா இதை நினைவில் வச்சு பேசுவா.
-Ex: என் பெயர் Ravi, Chennai-ல இருக்கேன், Software Engineer, தினமும் office போறேன். அம்மா, அப்பா family."}</Text>
+              <Text style={{ fontSize: 12, color: '#888', marginBottom: 12, lineHeight: 18 }}>{"உன்னோட உண்மையான details இங்க type பண்ணு. கிருத்திகா நினைவில் வச்சு பேசுவா. (பெயர், ஊர், job, family, health — எல்லாம் சொல்லலாம்)"}</Text>
               <TextInput
                 style={{ borderWidth: 1.5, borderColor: '#FF6B9D55', borderRadius: 12, padding: 14, fontSize: 14, minHeight: 130, textAlignVertical: 'top', color: '#222', backgroundColor: '#FFF5F9', lineHeight: 20 }}
                 value={kiruthikaDetailsDraft}
