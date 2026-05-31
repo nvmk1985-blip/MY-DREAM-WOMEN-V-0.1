@@ -1352,6 +1352,14 @@ export default function ChatScreen() {
               </TouchableOpacity>
             </>
           )}
+          {personaId === 'kiruthika' && (
+            <TouchableOpacity
+              onPress={() => { setKiruthikaDetailsDraft(kiruthikaUserDetails); setShowKiruthikaDetails(true); }}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Text style={{ fontSize: 10, color: '#FF6B9D', fontWeight: '700', backgroundColor: '#FF6B9D22', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>📝 Details</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </TouchableOpacity>
@@ -2063,6 +2071,44 @@ export default function ChatScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+      {/* ── Kiruthika "My Details" Modal ── */}
+      {personaId === 'kiruthika' && (
+        <Modal visible={showKiruthikaDetails} transparent animationType="slide" onRequestClose={() => setShowKiruthikaDetails(false)}>
+          <TouchableOpacity style={{ flex: 1, backgroundColor: '#00000066' }} activeOpacity={1} onPress={() => setShowKiruthikaDetails(false)}>
+            <TouchableOpacity activeOpacity={1} style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 36 }}>
+              <Text style={{ fontSize: 17, fontWeight: 'bold', color: '#FF6B9D', marginBottom: 6 }}>📝 என்னோட Details — கிருத்திகா-க்கு</Text>
+              <Text style={{ fontSize: 12, color: '#888', marginBottom: 12, lineHeight: 18 }}>{"உன்னோட உண்மையான details இங்க type பண்ணு. கிருத்திகா இதை நினைவில் வச்சு பேசுவா.
+Ex: என் பெயர் Ravi, Chennai-ல இருக்கேன், Software Engineer, தினமும் office போறேன். அம்மா, அப்பா family."}</Text>
+              <TextInput
+                style={{ borderWidth: 1.5, borderColor: '#FF6B9D55', borderRadius: 12, padding: 14, fontSize: 14, minHeight: 130, textAlignVertical: 'top', color: '#222', backgroundColor: '#FFF5F9', lineHeight: 20 }}
+                value={kiruthikaDetailsDraft}
+                onChangeText={setKiruthikaDetailsDraft}
+                multiline
+                placeholder={"உன்னோட பெயர், ஊர், job, family, health, daily routine — எவ்வளவு சொன்னாலும் OK..."}
+                placeholderTextColor="#ccc"
+              />
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                <TouchableOpacity
+                  style={{ flex: 1, backgroundColor: '#eee', borderRadius: 12, padding: 13, alignItems: 'center' }}
+                  onPress={() => setShowKiruthikaDetails(false)}
+                >
+                  <Text style={{ color: '#666', fontWeight: '600', fontSize: 14 }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ flex: 2, backgroundColor: '#FF6B9D', borderRadius: 12, padding: 13, alignItems: 'center' }}
+                  onPress={async () => {
+                    setKiruthikaUserDetails(kiruthikaDetailsDraft);
+                    await AsyncStorage.setItem('kiruthika_user_details', kiruthikaDetailsDraft).catch(() => {});
+                    setShowKiruthikaDetails(false);
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>💾 Save — கிருத்திகா-க்கு சொல்லு</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
