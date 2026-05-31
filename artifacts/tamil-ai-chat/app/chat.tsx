@@ -289,16 +289,12 @@ export default function ChatScreen() {
       try {
         const cached = await AsyncStorage.getItem('avdesc_' + key);
         if (cached) return cached;
-        const res = await fetch(API_URL + '/api/image-to-prompt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image_url: uri }),
-        });
-        if (!res.ok) return null;
-        const data = await res.json() as any;
-        if (data?.prompt) {
-          await AsyncStorage.setItem('avdesc_' + key, data.prompt.slice(0, 600));
-          return data.prompt.slice(0, 600);
+        // imageToPrompt() uses correct absolute URL + passes user's active Gemini key
+        const { imageToPrompt: _imgTp } = await import('../services/api');
+        const _imgDesc = await _imgTp(uri);
+        if (_imgDesc) {
+          await AsyncStorage.setItem('avdesc_' + key, _imgDesc.slice(0, 600));
+          return _imgDesc.slice(0, 600);
         }
       } catch {}
       return null;
@@ -1117,14 +1113,10 @@ export default function ChatScreen() {
     setPromptText('');
     setShowPromptModal(true);
     try {
-      const res = await fetch('/api/image-to-prompt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image_url: imageUrl }),
-      });
-      const data = await res.json() as any;
-      if (!res.ok) throw new Error(data.error || 'Failed');
-      setPromptText(data.prompt ?? '');
+      // imageToPrompt() uses absolute URL + passes user's Gemini key as header
+      const { imageToPrompt: _itp } = await import('../services/api');
+      const _prompt = await _itp(imageUrl);
+      setPromptText(_prompt || '');
     } catch (err: any) {
       setPromptText('❌ ' + (err.message || 'Prompt generate ஆகவில்லை. மீண்டும் try பண்ணுங்க.'));
     }
