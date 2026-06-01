@@ -12,36 +12,94 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 
-// HuggingFace Gradio spaces — called directly from mobile (no server needed, no AIFACESWAP_KEY)
+// Working HuggingFace Gradio spaces (new /gradio_api/call/ format)
 const HF_SPACES = [
-  'tonyassi-face-swap',
-  'dentro-face-swap',
-  'felixrosberg-face-swap',
+  {
+    host: 'tonyassi-face-swap',
+    endpoint: 'swap_faces',
+    // data: [src_img (face to copy), dest_img (target)]
+    buildData: (face: object, target: object) => [face, target],
+  },
+  {
+    host: 'ALSv-FaceSwapAll',
+    endpoint: 'predict',
+    // data: [src_img, src_face_index, dest_img, dest_face_index]
+    buildData: (face: object, target: object) => [face, 0, target, 0],
+  },
+  {
+    host: 'WeShopAI-WeShopAI-Swap-Face-And-BG',
+    endpoint: 'simple_generate',
+    // data: [target_img, source_img]
+    buildData: (face: object, target: object) => [target, face],
+  },
 ];
 
-async function tryGradioRest(
-  spaceHost: string,
-  faceDataUri: string,
-  targetDataUri: string,
+function makeImageData(dataUri: string) {
+  return {
+    url: dataUri,
+    meta: { _type: 'gradio.FileData' },
+  };
+}
+
+async function callGradioSpace(
+  host: string,
+  endpoint: string,
+  data: any[],
   hfToken?: string,
 ): Promise<string | null> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (hfToken) headers['Authorization'] = `Bearer ${hfToken}`;
 
-  const res = await fetch(`https://${spaceHost}.hf.space/run/predict`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ data: [faceDataUri, targetDataUri], fn_index: 0 }),
-    signal: AbortSignal.timeout(120000),
-  });
+  // Step 1: Submit job
+  const submitRes = await fetch(
+    `https://${host}.hf.space/gradio_api/call/${endpoint}`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ data }),
+      signal: AbortSignal.timeout(30000),
+    },
+  );
+  if (!submitRes.ok) return null;
+  const submitJson: any = await submitRes.json();
+  const eventId = submitJson?.event_id;
+  if (!eventId) return null;
 
-  if (!res.ok) return null;
-  const json: any = await res.json();
-  const out = json?.data?.[0];
-  if (!out) return null;
-  if (typeof out === 'string' && (out.startsWith('http') || out.startsWith('data:'))) return out;
-  if (out?.url) return out.url as string;
-  if (out?.path) return `https://${spaceHost}.hf.space/file=${out.path}`;
+  // Step 2: Poll result (SSE stream)
+  const pollRes = await fetch(
+    `https://${host}.hf.space/gradio_api/call/${endpoint}/${eventId}`,
+    { headers, signal: AbortSignal.timeout(120000) },
+  );
+  if (!pollRes.ok) return null;
+
+  const text = await pollRes.text();
+  const lines = text.split('\n');
+
+  let resultData: any = null;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith('event: complete')) {
+      const dataLine = lines[i + 1] || '';
+      if (dataLine.startsWith('data: ')) {
+        try {
+          resultData = JSON.parse(dataLine.slice(6));
+        } catch { /* ignore */ }
+      }
+      break;
+    }
+    if (lines[i].startsWith('event: error')) return null;
+  }
+
+  if (!resultData || !Array.isArray(resultData) || resultData.length === 0) return null;
+
+  // Extract image URL from result
+  const first = resultData[0];
+  if (!first) return null;
+  if (typeof first === 'string') {
+    if (first.startsWith('http') || first.startsWith('data:')) return first;
+  }
+  if (first?.url) return first.url as string;
+  if (first?.path) return `https://${host}.hf.space/gradio_api/file=${first.path}`;
+
   return null;
 }
 
@@ -91,17 +149,20 @@ export default function FaceSwapScreen() {
       const keysMap = keysRaw ? JSON.parse(keysRaw) as Record<string, string> : {};
       const hfToken = keysMap['hf']?.trim() || undefined;
 
+      const faceData = makeImageData(faceB64);
+      const targetData = makeImageData(targetB64);
+
       let swapResult: string | null = null;
 
       for (let i = 0; i < HF_SPACES.length; i++) {
         const space = HF_SPACES[i];
-        const label = `Space ${i + 1}/${HF_SPACES.length}`;
-        setStatusMsg(`${label} try பண்றேன்...`);
+        setStatusMsg(`AI space ${i + 1}/${HF_SPACES.length} try பண்றேன்...`);
         try {
-          swapResult = await tryGradioRest(space, faceB64, targetB64, hfToken);
+          const data = space.buildData(faceData, targetData);
+          swapResult = await callGradioSpace(space.host, space.endpoint, data, hfToken);
           if (swapResult) break;
         } catch {
-          // try next space
+          // try next
         }
       }
 
@@ -111,7 +172,7 @@ export default function FaceSwapScreen() {
       } else {
         Alert.alert(
           'Face Swap பிழை ❌',
-          'HuggingFace spaces இப்போது busy. சில நிமிடம் கழித்து மீண்டும் try பண்ணுங்க.\n\nHuggingFace key settings-ல் add பண்ணினால் faster ஆகும்.',
+          'AI spaces இப்போது busy அல்லது முகம் detect ஆகல.\n\n• முகம் clearly தெரியும் photo use பண்ணுங்க\n• சில நிமிடம் கழித்து மீண்டும் try பண்ணுங்க\n\nSettings-ல் HuggingFace key இருந்தால் faster ஆகும்.',
         );
         setStatusMsg('');
       }
@@ -161,6 +222,13 @@ export default function FaceSwapScreen() {
 
         <Text style={s.title}>AI Face Swap</Text>
         <Text style={s.sub}>✅ HuggingFace free AI · No API key needed!</Text>
+
+        <View style={s.tipCard}>
+          <Text style={s.tipTitle}>📸 Tips for best results:</Text>
+          <Text style={s.tipText}>• முகம் clearly தெரியும் photos use பண்ணுங்க</Text>
+          <Text style={s.tipText}>• Face நேரே (front-facing) இருக்கணும்</Text>
+          <Text style={s.tipText}>• Clear, bright photos best ஆக work ஆகும்</Text>
+        </View>
 
         {/* Image 1: Target */}
         <View style={s.card}>
@@ -236,7 +304,10 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0f0f1a' },
   scroll: { padding: 20 },
   title: { fontSize: 26, fontWeight: '800', color: '#fff', textAlign: 'center', marginBottom: 4 },
-  sub: { fontSize: 12, color: '#4ade80', textAlign: 'center', marginBottom: 24, fontWeight: '600' },
+  sub: { fontSize: 12, color: '#4ade80', textAlign: 'center', marginBottom: 16, fontWeight: '600' },
+  tipCard: { backgroundColor: '#1a2a1a', borderRadius: 12, padding: 14, marginBottom: 20, borderWidth: 1, borderColor: '#4ade8044' },
+  tipTitle: { color: '#4ade80', fontSize: 13, fontWeight: '700', marginBottom: 6 },
+  tipText: { color: '#aaa', fontSize: 12, marginBottom: 2 },
   card: { backgroundColor: '#1a1a2e', borderRadius: 16, padding: 16, marginBottom: 16, position: 'relative' },
   badge: { position: 'absolute', top: -12, left: 16, backgroundColor: '#7c3aed', borderRadius: 14, width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   badgeNum: { color: '#fff', fontWeight: '900', fontSize: 14 },
