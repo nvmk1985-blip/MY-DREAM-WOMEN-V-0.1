@@ -550,6 +550,7 @@ export default function KeysScreen() {
                         const nk = [...geminiKeys]; nk[i] = v; setGeminiKeys(nk);
                       }}
                       placeholder="AIzaSy... (aistudio.google.com → free key)"
+                      secureTextEntry={true}
                       placeholderTextColor="#555"
                       autoCapitalize="none"
                       autoCorrect={false}
