@@ -5,13 +5,17 @@ import { Client } from "@gradio/client";
 const router = Router();
 
 interface Job {
-  status: "processing" | "done" | "error";
+  status: "processing" | "done" | "error" | "queue_wait" | "model_loading" | "cold_start" | "gpu_unavailable" | "sleeping" | "switching";
   result_url?: string;
   error?: string;
+  user_message?: string;
+  queue_position?: number;
   createdAt: number;
+  retryCount?: number;
 }
 const jobs = new Map<string, Job>();
 
+// Cleanup old jobs every 10 minutes
 setInterval(() => {
   const cutoff = Date.now() - 30 * 60 * 1000;
   for (const [id, j] of jobs) if (j.createdAt < cutoff) jobs.delete(id);
@@ -36,7 +40,7 @@ router.post("/face-swap", async (req, res) => {
 
   // Accept both naming conventions
   const targetImg = body.target_url && body.face_url ? body.target_url : (body.source_url || body.target_url);
-  const faceImg   = body.face_url || body.target_url;
+  const faceImg = body.face_url || body.target_url;
 
   if (!targetImg || !faceImg) {
     res.status(400).json({ error: "target_url (image where face goes) and face_url (source face photo) required" });
@@ -44,7 +48,12 @@ router.post("/face-swap", async (req, res) => {
   }
 
   const jobId = randomUUID();
-  jobs.set(jobId, { status: "processing", createdAt: Date.now() });
+  jobs.set(jobId, { 
+    status: "processing", 
+    createdAt: Date.now(),
+    user_message: "🔄 Preparing AI...",
+    retryCount: 0
+  });
   res.json({ jobId });
   processSwap(jobId, targetImg, faceImg, hfToken).catch(() => {});
 });
@@ -114,7 +123,46 @@ async function tryRestSpace(
   return null;
 }
 
+function detectErrorType(error: any): { status: string; user_message: string; should_retry: boolean } {
+  const msg = String(error?.message || error || "").toLowerCase();
+  
+  // Queue/Wait errors
+  if (msg.includes("queue") || msg.includes("waiting")) {
+    return { status: "queue_wait", user_message: "⏳ AI server busy. Waiting in queue...", should_retry: false };
+  }
+  
+  // Model loading / Cold start
+  if (msg.includes("loading") || msg.includes("cold") || msg.includes("503") || msg.includes("unavailable")) {
+    return { status: "model_loading", user_message: "🚀 AI model starting. This may take 1-3 min...", should_retry: true };
+  }
+  
+  // GPU unavailable
+  if (msg.includes("gpu") || msg.includes("cuda")) {
+    return { status: "gpu_unavailable", user_message: "⚡ No GPU. Retrying...", should_retry: true };
+  }
+  
+  // Space sleeping / down
+  if (msg.includes("sleep") || msg.includes("down") || msg.includes("404")) {
+    return { status: "sleeping", user_message: "😴 Waking up AI server...", should_retry: true };
+  }
+  
+  // Network errors
+  if (msg.includes("network") || msg.includes("timeout") || msg.includes("fetch")) {
+    return { status: "error", user_message: "🌐 Internet problem. Retrying...", should_retry: true };
+  }
+  
+  // Rate limit
+  if (msg.includes("429") || msg.includes("rate")) {
+    return { status: "error", user_message: "⏱ Rate limited. Trying backup...", should_retry: true };
+  }
+  
+  return { status: "error", user_message: "❌ Failed. Trying backup...", should_retry: true };
+}
+
 async function processSwap(jobId: string, targetUrl: string, faceUrl: string, hfToken?: string) {
+  let retries = 0;
+  const maxRetries = 10; // Up to 10 minutes with 5-second waits
+  
   try {
     const [faceBlob, targetBlob] = await Promise.all([
       dataUriToBlob(faceUrl),
@@ -129,40 +177,105 @@ async function processSwap(jobId: string, targetUrl: string, faceUrl: string, hf
     const targetDataUri = `data:${targetMime};base64,${targetB64}`;
 
     let resultUrl: string | null = null;
+    let lastError: any = null;
 
-    const spaces = [
+    // Primary providers (Gradio-based)
+    const primarySpaces = [
       "tonyassi/face-swap",
       "Dentro/face-swap",
       "felixrosberg/face-swap",
     ];
 
-    for (const space of spaces) {
+    // Backup providers (REST-based)
+    const backupSpaces = [
+      "blackhool-roop-face-swap",
+      "deepfuture-ai-faceswap",
+    ];
+
+    // Try primary providers first
+    for (const space of primarySpaces) {
       if (resultUrl) break;
       try {
+        upd(jobId, { 
+          user_message: `🔄 Processing with ${space.split('/')[1]}...`,
+          status: "processing"
+        });
         resultUrl = await tryGradioSpace(space, faceBlob, targetBlob, 120000, hfToken);
       } catch (e: any) {
+        lastError = e;
+        const errorInfo = detectErrorType(e);
+        upd(jobId, { 
+          user_message: errorInfo.user_message,
+          status: errorInfo.status as any
+        });
         console.error(`[faceswap] ${space} failed:`, e?.message?.slice(0, 100));
+        
+        if (errorInfo.should_retry && retries < maxRetries) {
+          retries++;
+          await new Promise(r => setTimeout(r, 5000)); // 5 second wait before retry
+        }
       }
     }
 
+    // Try backup providers if primary failed
     if (!resultUrl) {
-      try {
-        resultUrl = await tryRestSpace("blackhool-roop-face-swap", faceDataUri, targetDataUri, hfToken);
-      } catch (e: any) {
-        console.error("[faceswap] blackhool REST failed:", e?.message?.slice(0, 100));
+      upd(jobId, { 
+        user_message: "🔄 Switching to backup service...",
+        status: "switching"
+      });
+      
+      for (const space of backupSpaces) {
+        if (resultUrl) break;
+        try {
+          upd(jobId, { 
+            user_message: `🔄 Using backup: ${space}...`,
+            status: "processing"
+          });
+          resultUrl = await tryRestSpace(space, faceDataUri, targetDataUri, hfToken);
+        } catch (e: any) {
+          lastError = e;
+          console.error(`[faceswap] ${space} failed:`, e?.message?.slice(0, 100));
+        }
       }
     }
 
+    // Success!
     if (resultUrl) {
-      upd(jobId, { status: "done", result_url: resultUrl });
+      upd(jobId, { 
+        status: "done", 
+        result_url: resultUrl,
+        user_message: "✅ Face swap complete!"
+      });
+      return;
+    }
+
+    // All providers exhausted
+    const startTime = jobs.get(jobId)?.createdAt || Date.now();
+    const elapsedMs = Date.now() - startTime;
+    
+    if (elapsedMs > 10 * 60 * 1000) {
+      // 10 minutes timeout
+      upd(jobId, {
+        status: "error",
+        error: "Timeout after 10 minutes",
+        user_message: "⏱ Service timeout. Try again later.",
+      });
     } else {
       upd(jobId, {
         status: "error",
-        error: "Face swap இப்போது கிடைக்கவில்லை. HuggingFace spaces busy ஆகியிருக்கலாம். சில நிமிடம் கழித்து மீண்டும் try பண்ணுங்க.",
+        error: lastError?.message || "All providers failed",
+        user_message: "😕 Services unavailable. Try in a few minutes.",
       });
     }
+    
   } catch (err: any) {
-    upd(jobId, { status: "error", error: err?.message || "Face swap failed" });
+    const errorInfo = detectErrorType(err);
+    upd(jobId, { 
+      status: "error", 
+      error: err?.message || "Face swap failed",
+      user_message: errorInfo.user_message
+    });
+    console.error("[faceswap] fatal error:", err?.message);
   }
 }
 
