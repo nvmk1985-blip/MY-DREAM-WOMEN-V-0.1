@@ -670,7 +670,7 @@ export default function AIGirlsScreen() {
     playRingtone(id);
   };
 
-  // ── Photo to Script (Qwen2-VL → Florence-2 → LLaVA, no Gemini) ──
+  // ── Photo to Script (Gemini server → Qwen2-VL → Florence-2 → LLaVA, with auto-retry) ──
   const handlePhotoToScript = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { Alert.alert('Permission வேணும்', 'Photos access allow பண்ணுங்க'); return; }
@@ -695,11 +695,7 @@ export default function AIGirlsScreen() {
       const storedKeys: Record<string, string> = keysRaw ? JSON.parse(keysRaw) : {};
       const hfKey = storedKeys['hf']?.trim();
 
-      if (!hfKey) {
-        setScriptText('🔑 Keys → HuggingFace API key enter பண்ணுங்க.\n\nhttps://huggingface.co/settings/tokens → New token (free account OK)');
-        setScriptLoading(false);
-        return;
-      }
+      const sleepMs = (ms: number) => new Promise(r => setTimeout(r, ms));
 
       const ANALYSIS_PROMPT = `Analyze this image in full detail. Use these exact section headers and fill each one:
 
@@ -744,101 +740,107 @@ Write a complete SD/SDXL prompt. Include: masterpiece, best quality, ultra detai
 ## MIDJOURNEY PROMPT
 Write a complete Midjourney v6 prompt ending with --ar 2:3 --style raw --v 6`;
 
-      // ── Model 1: Qwen2-VL ────────────────────────────────────
-      setScriptText('🔄 Trying Qwen2-VL (Model 1/3)...');
+      // Helper: try a HF vision model with retry on 503 (cold-start)
+      const tryHFModel = async (
+        url: string,
+        body: object,
+        label: string,
+        parseResult: (j: any) => string,
+      ): Promise<string | null> => {
+        for (let attempt = 0; attempt < 4; attempt++) {
+          setScriptText(`Analyzing image... (${label})`);
+          try {
+            const r = await fetch(url, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${hfKey}`, 'Content-Type': 'application/json', 'X-Wait-For-Model': 'true' },
+              body: JSON.stringify(body),
+              signal: AbortSignal.timeout(120000),
+            });
+            if (r.status === 503) {
+              setScriptText('AI model is starting. This may take 1-3 minutes.');
+              await sleepMs(15000);
+              continue;
+            }
+            if (r.status === 429) {
+              setScriptText('Daily API limit reached. Trying next model...');
+              return null;
+            }
+            if (!r.ok) return null;
+            const j = await r.json() as any;
+            const out = parseResult(j);
+            if (out && out.length > 50) return out;
+          } catch { await sleepMs(5000); }
+        }
+        return null;
+      };
+
+      // ── Priority 1: Gemini via API server (most reliable) ───────────────
+      setScriptText('Analyzing image...');
       try {
-        const r1 = await fetch(
-          'https://api-inference.huggingface.co/models/Qwen/Qwen2-VL-7B-Instruct/v1/chat/completions',
-          {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${hfKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'Qwen/Qwen2-VL-7B-Instruct',
-              max_tokens: 2048,
-              messages: [{ role: 'user', content: [
-                { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
-                { type: 'text', text: ANALYSIS_PROMPT },
-              ]}],
-            }),
-            signal: AbortSignal.timeout(90000),
-          }
-        );
-        if (r1.ok) {
-          const j1 = await r1.json() as any;
-          const out1: string = j1?.choices?.[0]?.message?.content?.trim() ?? '';
-          if (out1.length > 50) {
-            setScriptText(out1);
-            setScriptModelUsed('Qwen2-VL-7B');
+        const REPLIT_API = (process.env['EXPO_PUBLIC_API_URL'] ?? '').replace(/\/$/, '');
+        const serverRes = await fetch(`${REPLIT_API}/api/image-to-prompt`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ b64: base64, mime: 'image/jpeg' }),
+          signal: AbortSignal.timeout(60000),
+        });
+        if (serverRes.ok) {
+          const serverData = await serverRes.json() as any;
+          if (serverData?.prompt && serverData.prompt.length > 50) {
+            setScriptText(serverData.prompt);
+            setScriptModelUsed('Gemini AI');
             setScriptLoading(false);
             return;
           }
         }
-      } catch (_e1) { /* fallthrough to model 2 */ }
+      } catch { /* fallthrough to HF models */ }
 
-      // ── Model 2: Florence-2 ──────────────────────────────────
-      setScriptText('⏳ Qwen2-VL unavailable. Trying Florence-2 (Model 2/3)...');
-      try {
-        // Florence-2 detailed caption task
-        const r2 = await fetch(
-          'https://api-inference.huggingface.co/models/microsoft/Florence-2-large',
-          {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${hfKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ inputs: '<MORE_DETAILED_CAPTION>' }),
-            signal: AbortSignal.timeout(60000),
-          }
-        );
-        if (r2.ok) {
-          const j2 = await r2.json() as any;
-          const caption: string = (Array.isArray(j2) ? j2[0]?.generated_text : j2?.generated_text) ?? '';
-          if (caption.length > 20) {
-            // Florence gives a single paragraph — format it
-            setScriptText(
-              '## IMAGE ANALYSIS (Florence-2)\n' + caption +
-              '\n\n---\n\n## NOTE\nFlorence-2 gives a summarized description.\nFor full structured output with Flux/SD/MJ prompts, retry when Qwen2-VL is available.'
-            );
-            setScriptModelUsed('Florence-2-Large');
-            setScriptLoading(false);
-            return;
-          }
-        }
-      } catch (_e2) { /* fallthrough to model 3 */ }
+      if (!hfKey) {
+        setScriptText('🔑 Keys → HuggingFace API key enter பண்ணுங்க.\n\nhttps://huggingface.co/settings/tokens → New token (free account OK)');
+        setScriptLoading(false);
+        return;
+      }
 
-      // ── Model 3: LLaVA ────────────────────────────────────────
-      setScriptText('⏳ Trying LLaVA (Model 3/3)...');
-      try {
-        const r3 = await fetch(
-          'https://api-inference.huggingface.co/models/llava-hf/llava-1.5-7b-hf/v1/chat/completions',
-          {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${hfKey}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: 'llava-hf/llava-1.5-7b-hf',
-              max_tokens: 2048,
-              messages: [{ role: 'user', content: [
-                { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
-                { type: 'text', text: ANALYSIS_PROMPT },
-              ]}],
-            }),
-            signal: AbortSignal.timeout(90000),
-          }
-        );
-        if (r3.ok) {
-          const j3 = await r3.json() as any;
-          const out3: string = j3?.choices?.[0]?.message?.content?.trim() ?? '';
-          if (out3.length > 50) {
-            setScriptText(out3);
-            setScriptModelUsed('LLaVA-1.5-7B');
-            setScriptLoading(false);
-            return;
-          }
-        }
-      } catch (_e3) { /* all failed */ }
+      // ── Priority 2: Qwen2-VL ────────────────────────────────────────────
+      const out1 = await tryHFModel(
+        'https://api-inference.huggingface.co/models/Qwen/Qwen2-VL-7B-Instruct/v1/chat/completions',
+        { model: 'Qwen/Qwen2-VL-7B-Instruct', max_tokens: 2048, messages: [{ role: 'user', content: [
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+          { type: 'text', text: ANALYSIS_PROMPT },
+        ]}] },
+        'Qwen2-VL 1/3',
+        (j) => j?.choices?.[0]?.message?.content?.trim() ?? '',
+      );
+      if (out1) { setScriptText(out1); setScriptModelUsed('Qwen2-VL-7B'); setScriptLoading(false); return; }
 
-      // All failed
-      setScriptText('❌ மூன்று models-உம் இப்போது தயாரில்ல.\n\n💡 காரணம்:\n• HF models loading ஆகும் (2-3 நிமிடம் wait)\n• மீண்டும் try பண்ணுங்க\n\nHuggingFace free tier-ல் models cold-start ஆகும் — கொஞ்சம் wait பண்ணி retry பண்ணுங்க.');
+      // ── Priority 3: Florence-2 ──────────────────────────────────────────
+      const out2 = await tryHFModel(
+        'https://api-inference.huggingface.co/models/microsoft/Florence-2-large',
+        { inputs: '<MORE_DETAILED_CAPTION>' },
+        'Florence-2 2/3',
+        (j) => (Array.isArray(j) ? j[0]?.generated_text : j?.generated_text) ?? '',
+      );
+      if (out2) {
+        setScriptText('## IMAGE ANALYSIS (Florence-2)\n' + out2 + '\n\n---\n\n## NOTE\nFor full SD/Flux/MJ prompts, retry — Gemini will give better results.');
+        setScriptModelUsed('Florence-2-Large'); setScriptLoading(false); return;
+      }
+
+      // ── Priority 4: LLaVA ──────────────────────────────────────────────
+      const out3 = await tryHFModel(
+        'https://api-inference.huggingface.co/models/llava-hf/llava-1.5-7b-hf/v1/chat/completions',
+        { model: 'llava-hf/llava-1.5-7b-hf', max_tokens: 2048, messages: [{ role: 'user', content: [
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+          { type: 'text', text: ANALYSIS_PROMPT },
+        ]}] },
+        'LLaVA 3/3',
+        (j) => j?.choices?.[0]?.message?.content?.trim() ?? '',
+      );
+      if (out3) { setScriptText(out3); setScriptModelUsed('LLaVA-1.5-7B'); setScriptLoading(false); return; }
+
+      // All failed — friendly message with retry option
+      setScriptText('AI server இப்போது பிஸியாக உள்ளது.\n\nசில நிமிடங்கள் கழித்து மீண்டும் try பண்ணுங்க.');
     } catch (e: any) {
-      setScriptText('பிழை: ' + (e?.message ?? 'Try again'));
+      setScriptText('AI server respond ஆகவில்லை. மீண்டும் try பண்ணுங்க.');
     } finally {
       setScriptLoading(false);
     }
