@@ -12,6 +12,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
 // ── HuggingFace Space Gradio helper ──────────────────────────────────────────
 async function callGradioSpace(
   host: string,
@@ -19,50 +21,132 @@ async function callGradioSpace(
   data: any[],
   hfToken?: string,
   timeoutMs = 180000,
+  onStatus?: (msg: string) => void,
 ): Promise<string | null> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (hfToken) headers['Authorization'] = `Bearer ${hfToken}`;
 
-  try {
-    // Submit job
-    const submitRes = await fetch(
-      `https://${host}.hf.space/gradio_api/call/${endpoint}`,
-      { method: 'POST', headers, body: JSON.stringify({ data }), signal: AbortSignal.timeout(30000) },
-    );
-    if (!submitRes.ok) return null;
-    const submitJson: any = await submitRes.json();
-    const eventId = submitJson?.event_id;
-    if (!eventId) return null;
-
-    // Poll SSE result
-    const pollRes = await fetch(
-      `https://${host}.hf.space/gradio_api/call/${endpoint}/${eventId}`,
-      { headers, signal: AbortSignal.timeout(timeoutMs) },
-    );
-    if (!pollRes.ok) return null;
-
-    const text = await pollRes.text();
-    const lines = text.split('\n');
-    let resultData: any = null;
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].startsWith('event: complete')) {
-        const dl = lines[i + 1] || '';
-        if (dl.startsWith('data: ')) {
-          try { resultData = JSON.parse(dl.slice(6)); } catch { }
+  const MAX_ATTEMPTS = 4;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      // Submit job
+      let submitRes: Response;
+      try {
+        submitRes = await fetch(
+          `https://${host}.hf.space/gradio_api/call/${endpoint}`,
+          { method: 'POST', headers, body: JSON.stringify({ data }), signal: AbortSignal.timeout(30000) },
+        );
+      } catch {
+        if (attempt < MAX_ATTEMPTS - 1) {
+          onStatus?.('Preparing AI...');
+          await sleep(5000);
+          continue;
         }
-        break;
+        return null;
       }
-      if (lines[i].startsWith('event: error')) return null;
-    }
-    if (!resultData || !Array.isArray(resultData) || resultData.length === 0) return null;
 
-    const first = resultData[0];
-    if (!first) return null;
-    if (typeof first === 'string' && (first.startsWith('http') || first.startsWith('data:'))) return first;
-    if (first?.url) return first.url as string;
-    if (first?.path) return `https://${host}.hf.space/gradio_api/file=${first.path}`;
-    return null;
-  } catch { return null; }
+      // Space sleeping / cold-start — wake it up and retry
+      if (submitRes.status === 503 || submitRes.status === 502) {
+        onStatus?.('Waking up AI server...');
+        await sleep(10000);
+        continue;
+      }
+
+      if (!submitRes.ok) return null;
+
+      const submitJson: any = await submitRes.json().catch(() => null);
+      const eventId = submitJson?.event_id;
+      if (!eventId) return null;
+
+      // Poll SSE result with retry on loading/queue events
+      let pollAttempts = 0;
+      while (pollAttempts < 6) {
+        pollAttempts++;
+        let pollRes: Response;
+        try {
+          pollRes = await fetch(
+            `https://${host}.hf.space/gradio_api/call/${endpoint}/${eventId}`,
+            { headers, signal: AbortSignal.timeout(timeoutMs) },
+          );
+        } catch {
+          onStatus?.('Processing image...');
+          await sleep(5000);
+          continue;
+        }
+
+        if (!pollRes.ok) {
+          if (pollRes.status === 503) {
+            onStatus?.('AI model is starting. This may take 1-3 minutes.');
+            await sleep(10000);
+            continue;
+          }
+          return null;
+        }
+
+        const text = await pollRes.text();
+        const lines = text.split('\n');
+        let resultData: any = null;
+        let shouldRetry = false;
+
+        for (let i = 0; i < lines.length; i++) {
+          if (lines[i].startsWith('event: complete')) {
+            const dl = lines[i + 1] || '';
+            if (dl.startsWith('data: ')) {
+              try { resultData = JSON.parse(dl.slice(6)); } catch { }
+            }
+            break;
+          }
+          if (lines[i].startsWith('event: error')) {
+            const errLine = lines[i + 1] || '';
+            const errText = errLine.toLowerCase();
+            // Model loading or queue — wait and retry
+            if (
+              errText.includes('loading') ||
+              errText.includes('queue') ||
+              errText.includes('cold') ||
+              errText.includes('starting') ||
+              errText.includes('busy')
+            ) {
+              onStatus?.('AI server is busy. Waiting in queue...');
+              shouldRetry = true;
+            }
+            break;
+          }
+          // Queue position event
+          if (lines[i].startsWith('event: queue_full') || lines[i].includes('queue_position')) {
+            onStatus?.('AI server is busy. Waiting in queue...');
+            shouldRetry = true;
+            break;
+          }
+          // Heartbeat / status events
+          if (lines[i].startsWith('event: process_starts')) {
+            onStatus?.('Generating result...');
+          }
+        }
+
+        if (shouldRetry) {
+          await sleep(5000);
+          continue;
+        }
+
+        if (!resultData || !Array.isArray(resultData) || resultData.length === 0) return null;
+
+        const first = resultData[0];
+        if (!first) return null;
+        if (typeof first === 'string' && (first.startsWith('http') || first.startsWith('data:'))) return first;
+        if (first?.url) return first.url as string;
+        if (first?.path) return `https://${host}.hf.space/gradio_api/file=${first.path}`;
+        return null;
+      }
+      return null;
+    } catch {
+      if (attempt < MAX_ATTEMPTS - 1) {
+        onStatus?.('Preparing AI...');
+        await sleep(5000);
+      }
+    }
+  }
+  return null;
 }
 
 function imgObj(dataUri: string) {
@@ -70,26 +154,11 @@ function imgObj(dataUri: string) {
 }
 
 // ── FACE SWAP ENGINE — InsightFace/InSwapper128 + GFPGAN + Real-ESRGAN ───────
-//
-// Priority chain:
-//   1. Gourieff/ReActor     — InsightFace + InSwapper128 + CodeFormer/GFPGAN (best)
-//   2. r3gm/ReActor          — same engine, alternate instance
-//   3. Dentro/face-swap      — roop (InsightFace + InSwapper128)
-//   4. ALSv/FaceSwapAll      — InsightFace multi-face
-//   5. tonyassi/face-swap    — generic fallback
-//
-// Enhancement pipeline (after swap):
-//   A. Xintao/GFPGAN         — face restoration
-//   B. sberbank-ai/Real-ESRGAN — 4× upscaling
-
 const SWAP_SPACES = [
   {
     label: 'ReActor (InsightFace + InSwapper128 + CodeFormer)',
     host: 'Gourieff-ReActor',
     endpoint: 'predict',
-    // [source_img, target_img, src_face_idx, tgt_face_idx, face_restore, restore_visibility,
-    //  codeformer_weight, detect_thresh, reference_img, many_faces, gender_detect_src,
-    //  save_to_file, random_seed, face_model, gender_src, gender_tgt]
     buildData: (face: object, target: object) => [
       face, target, '0', '0', 'CodeFormer', 1, 0.5, 100, null,
       false, false, false, -1, 'inswapper_128.onnx', 'No', 'No',
@@ -129,7 +198,6 @@ async function enhanceWithGFPGAN(imgDataUri: string, hfToken?: string): Promise<
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (hfToken) headers['Authorization'] = `Bearer ${hfToken}`;
-    // Try Xintao/GFPGAN space
     const res = await fetch('https://Xintao-GFPGAN.hf.space/gradio_api/call/inference', {
       method: 'POST', headers,
       body: JSON.stringify({ data: [imgObj(imgDataUri), 'v1.4', 2] }),
@@ -208,7 +276,6 @@ async function urlToDataUri(url: string): Promise<string | null> {
   try {
     if (url.startsWith('data:')) return url;
     if (url.startsWith('http')) {
-      // Download to temp file, then read as base64
       const tmp = FileSystem.cacheDirectory + `enhance_${Date.now()}.jpg`;
       await FileSystem.downloadAsync(url, tmp);
       const raw = await FileSystem.readAsStringAsync(tmp, { encoding: FileSystem.EncodingType.Base64 });
@@ -261,7 +328,7 @@ export default function FaceSwapScreen() {
     if (!targetB64 || !faceB64) {
       Alert.alert('Images இல்லை', 'இரண்டு photos-ம் select பண்ணுங்க.'); return;
     }
-    setLoading(true); setResultUrl(null); setStatusMsg('Starting...'); setUsedModel('');
+    setLoading(true); setResultUrl(null); setStatusMsg('Preparing AI...'); setUsedModel('');
 
     try {
       const keysRaw = await AsyncStorage.getItem('api_keys_store').catch(() => null);
@@ -271,24 +338,37 @@ export default function FaceSwapScreen() {
       const faceData = imgObj(faceB64);
       const targetData = imgObj(targetB64);
 
-      // ── STEP 1: Face Swap (InsightFace + InSwapper128) ──────────────────────
+      // ── STEP 1: Face Swap — auto-retry for up to 60 seconds ────────────────
       let swapResult: string | null = null;
       let modelLabel = '';
 
-      for (let i = 0; i < SWAP_SPACES.length; i++) {
-        const sp = SWAP_SPACES[i];
-        setStatusMsg(`🔍 Face detection... [${i+1}/${SWAP_SPACES.length}] ${sp.label}`);
-        try {
-          const data = sp.buildData(faceData, targetData);
-          swapResult = await callGradioSpace(sp.host, sp.endpoint, data, hfToken);
-          if (swapResult) { modelLabel = sp.label; break; }
-        } catch { /* try next */ }
+      const RETRY_TIMEOUT_MS = 60000;
+      const retryStart = Date.now();
+
+      while (!swapResult && Date.now() - retryStart < RETRY_TIMEOUT_MS) {
+        for (let i = 0; i < SWAP_SPACES.length; i++) {
+          const sp = SWAP_SPACES[i];
+          setStatusMsg('Generating...');
+          try {
+            const data = sp.buildData(faceData, targetData);
+            swapResult = await callGradioSpace(
+              sp.host, sp.endpoint, data, hfToken, 180000,
+              (msg) => setStatusMsg(msg),
+            );
+            if (swapResult) { modelLabel = sp.label; break; }
+          } catch { /* try next space */ }
+        }
+
+        if (!swapResult && Date.now() - retryStart < RETRY_TIMEOUT_MS) {
+          setStatusMsg('Preparing AI...');
+          await sleep(5000);
+        }
       }
 
       if (!swapResult) {
         Alert.alert(
-          'Face Swap பிழை ❌',
-          'AI spaces இப்போது busy.\n\n• முகம் clearly தெரியும் front-facing photos use பண்ணுங்க\n• Settings-ல் HuggingFace key set பண்ணுங்க (faster)\n• சில நிமிடம் கழித்து மீண்டும் try பண்ணுங்க',
+          'தோல்வி',
+          'AI service இப்போது respond ஆகவில்லை.\n\n• Internet connection சரி பார்க்கவும்\n• சில நிமிடம் கழித்து மீண்டும் try பண்ணுங்க\n• Settings-ல் HuggingFace key set பண்ணுங்க (faster)',
         );
         setStatusMsg(''); return;
       }
