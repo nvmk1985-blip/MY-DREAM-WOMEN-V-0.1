@@ -246,6 +246,8 @@ export default function ChatScreen() {
   const [normalAvatarUri, setNormalAvatarUri] = useState<string | undefined>(undefined);
   const [presanaAvatarUri, setPresanaAvatarUri] = useState<string | undefined>(undefined);
   const [userPhotoUri, setUserPhotoUri] = useState<string | null>(null);
+  const [userNormalPhotoUri, setUserNormalPhotoUri] = useState<string | null>(null);
+  const [userPrasanaPhotoUri, setUserPrasanaPhotoUri] = useState<string | null>(null);
   const [userName, setUserName]           = useState('');
   const [userBehaviour, setUserBehaviour] = useState('');
 
@@ -282,33 +284,140 @@ export default function ChatScreen() {
   // Reload persona when returning from edit-character screen
   useFocusEffect(useCallback(() => { reloadPersona(); }, [reloadPersona]));
 
-  // ── Auto-analyze avatar images for Avatar Reflection feature ────────
+  // ── Avatar Profile Analysis — Qwen2-VL → Florence-2 → LLaVA (no Gemini) ──
   useEffect(() => {
-    const API_URL = (process.env['EXPO_PUBLIC_API_URL'] ?? '').replace(/\/$/, '');
-    const analyzeUri = async (uri: string, key: string): Promise<string | null> => {
+    // Convert any URI (file / http) to base64 string
+    const toBase64 = async (uri: string): Promise<string> => {
+      if (!uri) return '';
       try {
-        const cached = await AsyncStorage.getItem('avdesc_' + key);
-        if (cached) return cached;
-        // imageToPrompt() uses correct absolute URL + passes user's active Gemini key
-        const { imageToPrompt: _imgTp } = await import('../services/api');
-        const _imgDesc = await _imgTp(uri);
-        if (_imgDesc) {
-          await AsyncStorage.setItem('avdesc_' + key, _imgDesc.slice(0, 600));
-          return _imgDesc.slice(0, 600);
+        if (uri.startsWith('data:')) return uri.split(',')[1] ?? '';
+        if (uri.startsWith('http')) {
+          const r = await fetch(uri);
+          const buf = await r.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          let b = ''; for (let i=0;i<bytes.length;i++) b+=String.fromCharCode(bytes[i]);
+          return btoa(b);
         }
-      } catch {}
-      return null;
+        // Local file URI
+        const FS = await import('expo-file-system');
+        return await FS.default.readAsStringAsync(uri, { encoding: (FS.FileSystemEncodingType || FS.default.EncodingType || {Base64:'base64'}).Base64 ?? 'base64' });
+      } catch { return ''; }
     };
+
+    // Analyze one image → structured profile (caches per URI, respects user edits)
+    const analyzeAvatar = async (uri: string, slot: string): Promise<string | null> => {
+      if (!uri) return null;
+      const cKey = 'avprofile_' + slot + '_' + uri.replace(/[^a-zA-Z0-9]/g,'').slice(-24);
+      try {
+        // User-edited profile takes priority
+        const edited = await AsyncStorage.getItem('avprofile_edit_' + cKey);
+        if (edited) return edited;
+        // Auto-generated cache
+        const cached = await AsyncStorage.getItem(cKey);
+        if (cached) return cached;
+
+        const keysRaw = await AsyncStorage.getItem('api_keys_store');
+        const hfKey = keysRaw ? (JSON.parse(keysRaw)['hf'] ?? '').trim() : '';
+        if (!hfKey) return null;
+
+        const base64 = await toBase64(uri);
+        if (!base64) return null;
+
+        const PROFILE_PROMPT = `Analyze this avatar image and generate a short profile. Use these exact labels:
+
+AGE RANGE: (18-25 / 25-35 / 35-45 / 45+)
+FACE SHAPE: (oval/round/square/heart/diamond)
+HAIRSTYLE: (length, color, texture, style)
+CLOTHING STYLE: (traditional saree / modern / casual / describe exactly)
+UNCOVERED BODY PARTS: (what skin is visible — arms, midriff, legs, neckline, etc.)
+EXPRESSION: (smile/serious/playful/confident/shy)
+BODY LANGUAGE: (posture, stance, energy)
+OVERALL VIBE: (5-8 word characterization)
+PERSONALITY IMPRESSION: (what this person projects)
+COMMUNICATION STYLE: (formal/casual/warm/direct/playful)
+
+Each label: 1 sentence max.`;
+
+        const imgContent = { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } };
+
+        // ── Qwen2-VL (primary) ──────────────────────────────
+        try {
+          const r1 = await fetch(
+            'https://api-inference.huggingface.co/models/Qwen/Qwen2-VL-7B-Instruct/v1/chat/completions',
+            { method:'POST', headers:{'Authorization':`Bearer ${hfKey}`,'Content-Type':'application/json'},
+              body: JSON.stringify({ model:'Qwen/Qwen2-VL-7B-Instruct', max_tokens:400,
+                messages:[{role:'user',content:[imgContent,{type:'text',text:PROFILE_PROMPT}]}] }),
+              signal: AbortSignal.timeout(60000) }
+          );
+          if (r1.ok) {
+            const j1 = await r1.json() as any;
+            const out: string = j1?.choices?.[0]?.message?.content?.trim() ?? '';
+            if (out.length > 30) {
+              await AsyncStorage.setItem(cKey, out.slice(0,800));
+              return out.slice(0,800);
+            }
+          }
+        } catch {}
+
+        // ── Florence-2 (secondary) ────────────────────────────
+        try {
+          const r2 = await fetch(
+            'https://api-inference.huggingface.co/models/microsoft/Florence-2-large',
+            { method:'POST', headers:{'Authorization':`Bearer ${hfKey}`,'Content-Type':'application/json'},
+              body: JSON.stringify({ inputs:'<MORE_DETAILED_CAPTION>' }),
+              signal: AbortSignal.timeout(45000) }
+          );
+          if (r2.ok) {
+            const j2 = await r2.json() as any;
+            const cap: string = (Array.isArray(j2)?j2[0]?.generated_text:j2?.generated_text) ?? '';
+            if (cap.length > 20) {
+              const out = 'OVERALL VIBE: ' + cap.slice(0,400);
+              await AsyncStorage.setItem(cKey, out);
+              return out;
+            }
+          }
+        } catch {}
+
+        // ── LLaVA (backup) ───────────────────────────────────
+        try {
+          const r3 = await fetch(
+            'https://api-inference.huggingface.co/models/llava-hf/llava-1.5-7b-hf/v1/chat/completions',
+            { method:'POST', headers:{'Authorization':`Bearer ${hfKey}`,'Content-Type':'application/json'},
+              body: JSON.stringify({ model:'llava-hf/llava-1.5-7b-hf', max_tokens:400,
+                messages:[{role:'user',content:[imgContent,{type:'text',text:PROFILE_PROMPT}]}] }),
+              signal: AbortSignal.timeout(60000) }
+          );
+          if (r3.ok) {
+            const j3 = await r3.json() as any;
+            const out: string = j3?.choices?.[0]?.message?.content?.trim() ?? '';
+            if (out.length > 30) {
+              await AsyncStorage.setItem(cKey, out.slice(0,800));
+              return out.slice(0,800);
+            }
+          }
+        } catch {}
+
+        return null;
+      } catch { return null; }
+    };
+
     const run = async () => {
-      const desc: { main?: string; normal?: string; presana?: string; user?: string } = {};
-      if (avatarUri)        { const d = await analyzeUri(avatarUri,        'main_' + avatarUri.slice(-20));        if (d) desc.main    = d; }
-      if (normalAvatarUri)  { const d = await analyzeUri(normalAvatarUri,  'norm_' + normalAvatarUri.slice(-20));  if (d) desc.normal  = d; }
-      if (presanaAvatarUri) { const d = await analyzeUri(presanaAvatarUri, 'pres_' + presanaAvatarUri.slice(-20)); if (d) desc.presana = d; }
-      if (userPhotoUri)     { const d = await analyzeUri(userPhotoUri,     'user_' + userPhotoUri.slice(-20));     if (d) desc.user    = d; }
+      const desc: typeof avatarDescriptions = {};
+      // Character avatars
+      if (avatarUri)           { const d=await analyzeAvatar(avatarUri,        'chmain'); if(d) desc.main=d; }
+      if (normalAvatarUri)     { const d=await analyzeAvatar(normalAvatarUri,  'chnorm'); if(d) desc.normal=d; }
+      if (presanaAvatarUri)    { const d=await analyzeAvatar(presanaAvatarUri, 'chpres'); if(d) desc.presana=d; }
+      // User avatars
+      if (userPhotoUri)        { const d=await analyzeAvatar(userPhotoUri,     'usrmain'); if(d) desc.user=d; }
+      if (userNormalPhotoUri)  { const d=await analyzeAvatar(userNormalPhotoUri,'usrnorm'); if(d) desc.userNormal=d; }
+      if (userPrasanaPhotoUri) { const d=await analyzeAvatar(userPrasanaPhotoUri,'usrpres'); if(d) desc.userPrasana=d; }
       if (Object.keys(desc).length > 0) setAvatarDescriptions(desc);
     };
     run();
-  }, [avatarUri, normalAvatarUri, presanaAvatarUri, userPhotoUri]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [avatarUri, normalAvatarUri, presanaAvatarUri, userPhotoUri, userNormalPhotoUri, userPrasanaPhotoUri]);
+
+
 
   const welcome = persona
     ? (persona.greeting?.trim() || `வணக்கம்! நான் ${persona.name}. என்ன கதைக்கணும்? 😊`)
@@ -351,7 +460,7 @@ export default function ChatScreen() {
   const [userBodyDesc, setUserBodyDesc] = useState('');
   const [avatarReflectionEnabled, setAvatarReflectionEnabled] = useState(true);
   const [avatarReflectionPrompt, setAvatarReflectionPrompt] = useState('');
-  const [avatarDescriptions, setAvatarDescriptions] = useState<{main?: string; normal?: string; presana?: string; user?: string}>({});
+  const [avatarDescriptions, setAvatarDescriptions] = useState<{main?: string; normal?: string; presana?: string; user?: string; userNormal?: string; userPrasana?: string}>({});
 
   // ── Chat Style (wallpaper + bubble) ──
   const [chatWallpaper, setChatWallpaper] = useState('default');
@@ -553,10 +662,12 @@ export default function ChatScreen() {
   const webGPU = isWebGPUSupported();
 
   useEffect(() => {
-    AsyncStorage.multiGet(['user_profile_photo', 'user_name', 'user_behaviour']).then(pairs => {
+    AsyncStorage.multiGet(['user_profile_photo', 'user_normal_photo', 'user_prasana_photo', 'user_name', 'user_behaviour']).then(pairs => {
       if (pairs[0][1]) setUserPhotoUri(pairs[0][1]);
-      if (pairs[1][1]) setUserName(pairs[1][1]);
-      if (pairs[2][1]) setUserBehaviour(pairs[2][1]);
+      if (pairs[1][1]) setUserNormalPhotoUri(pairs[1][1]);
+      if (pairs[2][1]) setUserPrasanaPhotoUri(pairs[2][1]);
+      if (pairs[3][1]) setUserName(pairs[3][1]);
+      if (pairs[4][1]) setUserBehaviour(pairs[4][1]);
     }).catch(() => {});
     AsyncStorage.multiGet(['chat_is_online', 'local_gemma_port']).then(pairs => {
       const onlineVal = pairs[0][1];
@@ -852,13 +963,22 @@ export default function ChatScreen() {
         // Image 3 — presana mode photo
         if (presanaAvatarUri) lines.push(`Image 3 (Presana mode photo): ${presanaAvatarUri}`);
 
-        // Avatar visual descriptions (auto-analyzed via image-to-prompt Gemini)
+        // Avatar profiles (Qwen2-VL/Florence-2/LLaVA analyzed — mode-aware)
         if (Object.keys(avatarDescriptions).length > 0) {
-          lines.push('\n**[Avatar Photos — Visual Analysis (AI-Analyzed):]:**');
-          if (avatarDescriptions.main)    lines.push('Character Main Photo-ல் பார்க்குறது: ' + avatarDescriptions.main);
-          if (avatarDescriptions.normal)  lines.push('Character Normal Mode Photo: ' + avatarDescriptions.normal);
-          if (avatarDescriptions.presana) lines.push('Character Presana Mode Photo: ' + avatarDescriptions.presana);
-          if (avatarDescriptions.user)    lines.push('User-ஓட Photo-ல் பார்க்குறது (இதன் படி user-ஐ describe பண்ணு): ' + avatarDescriptions.user);
+          lines.push('\n**[Avatar Profiles — AI-Analyzed Appearance & Personality:]:**');
+          // Character profiles — show mode-specific one first
+          if (moodMode === 'presana' && avatarDescriptions.presana)
+            lines.push('Character Presana Mode Profile: ' + avatarDescriptions.presana);
+          else if (moodMode === 'normal' && avatarDescriptions.normal)
+            lines.push('Character Normal Mode Profile: ' + avatarDescriptions.normal);
+          else if (avatarDescriptions.main)
+            lines.push('Character Profile: ' + avatarDescriptions.main);
+          // User profiles — show mode-specific one
+          const activeUserProfile = moodMode === 'presana'
+            ? (avatarDescriptions.userPrasana || avatarDescriptions.user)
+            : (avatarDescriptions.userNormal || avatarDescriptions.user);
+          if (activeUserProfile)
+            lines.push('User Profile (avatar-ல் பார்த்து இப்படி treat பண்ணு): ' + activeUserProfile);
         }
 
         // User Image 2: new user behavior fields (added in edit-character page)
