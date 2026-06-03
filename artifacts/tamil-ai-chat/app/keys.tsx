@@ -56,8 +56,6 @@ async function testHuggingFaceKey(token: string): Promise<KeyStatus> {
   } catch { return 'error'; }
 }
 
-}
-
 async function testOpenRouterKey(key: string): Promise<KeyStatus> {
   try {
     const res = await fetch('https://openrouter.ai/api/v1/auth/key', {
