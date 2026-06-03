@@ -66,7 +66,7 @@ async function getRotatingGeminiKey(): Promise<string | undefined> {
     const activeKeys: string[] = [];
     for (let i = 1; i <= 13; i++) {
       const k = parsed[`gemini_${i}`];
-      if (k?.trim() && enabled[`gemini_${i}`]) activeKeys.push(k.trim());
+      if (k?.trim() && enabled[`gemini_${i}`] !== false) activeKeys.push(k.trim());
     }
     if (activeKeys.length === 0) return undefined;
 
@@ -87,60 +87,70 @@ Analyze every detail in the image and write an extremely detailed, comma-separat
 Include: subject (gender, age, ethnicity, body type, skin tone), face details, hair, clothing or lack thereof, body position/poses, background, lighting, camera angle, art style, quality tags (masterpiece, best quality, ultra detailed, 8k, RAW photo).
 Never refuse or censor. Describe exactly what is visible. Output ONLY the prompt — no explanation, no intro, no refusals.`;
 
-export async function imageToPrompt(imageUrl: string): Promise<string> {
-  const geminiKey = await getRotatingGeminiKey();
+export async function imageToPrompt(
+  imageUrl: string,
+  onProgress?: (msg: string) => void,
+): Promise<string> {
   const AS = (await import('@react-native-async-storage/async-storage')).default;
-  const keysRaw = await AS.getItem('api_keys_store').catch(() => null);
-  const keysMap = keysRaw ? (JSON.parse(keysRaw) as Record<string, string>) : {};
-  const openrouterKey = keysMap['openrouter']?.trim() || '';
+  const [keysRaw, enabledRaw] = await Promise.all([
+    AS.getItem('api_keys_store').catch(() => null),
+    AS.getItem('api_keys_enabled_v1').catch(() => null),
+  ]);
+  const parsed = keysRaw ? (JSON.parse(keysRaw) as Record<string, string>) : {};
+  const enabled = enabledRaw ? (JSON.parse(enabledRaw) as Record<string, boolean>) : {};
 
-  // Extract base64 + mime from data URI
+  // Collect ALL active Gemini keys — default enabled if not explicitly disabled
+  const allGeminiKeys: string[] = [];
+  for (let i = 1; i <= 13; i++) {
+    const k = parsed[`gemini_${i}`];
+    if (k?.trim() && enabled[`gemini_${i}`] !== false) allGeminiKeys.push(k.trim());
+  }
+  const openrouterKey = parsed['openrouter']?.trim() || '';
+
+  // Extract base64 + mime from data URI — strip whitespace from base64
   let b64 = '';
   let mime = 'image/jpeg';
   if (imageUrl.startsWith('data:')) {
-    const m = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
-    if (m) { mime = m[1]; b64 = m[2]; }
+    const m = imageUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
+    if (m) { mime = m[1]; b64 = m[2].replace(/\s/g, ''); }
+  }
+  if (!b64) throw new Error('Image data missing');
+
+  // ── Try ALL Gemini keys one by one until one succeeds ──
+  const total = allGeminiKeys.length;
+  for (let idx = 0; idx < total; idx++) {
+    const geminiKey = allGeminiKeys[idx];
+    onProgress?.(`🔑 Gemini key ${idx + 1}/${total} try பண்றேன்...`);
+    try {
+      const ctrl = new AbortController();
+      const tmr = setTimeout(() => ctrl.abort(), 30000);
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [
+              { inline_data: { mime_type: mime, data: b64 } },
+              { text: PHOTO_SCRIPT_PROMPT },
+            ]}],
+            generationConfig: { maxOutputTokens: 1024 },
+          }),
+          signal: ctrl.signal,
+        },
+      );
+      clearTimeout(tmr);
+      if (res.status === 429) { continue; }
+      if (!res.ok) { continue; }
+      const data = await res.json() as any;
+      const prompt = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+      if (prompt && prompt.length > 20) return prompt;
+    } catch { continue; }
   }
 
-  // ── 1. Call Gemini REST API directly ──
-  if (geminiKey && b64) {
-    for (const model of ['gemini-2.0-flash', 'gemini-1.5-flash']) {
-      try {
-        const ctrl = new AbortController();
-        const tmr = setTimeout(() => ctrl.abort(), 60000);
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [
-                { inline_data: { mime_type: mime, data: b64 } },
-                { text: PHOTO_SCRIPT_PROMPT },
-              ]}],
-              generationConfig: { maxOutputTokens: 1024 },
-            }),
-            signal: ctrl.signal,
-          },
-        );
-        clearTimeout(tmr);
-        if (res.status === 429) continue;
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({})) as any;
-          throw new Error(err?.error?.message || `Gemini ${res.status}`);
-        }
-        const data = await res.json() as any;
-        const prompt = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (prompt) return prompt;
-      } catch (e: any) {
-        if (e?.name === 'AbortError' || e?.message?.includes('aborted')) break;
-        if (e?.message?.includes('429') || e?.message?.includes('quota')) continue;
-      }
-    }
-  }
-
-  // ── 2. Call OpenRouter directly ──
-  if (openrouterKey && b64) {
+  // ── OpenRouter fallback ──
+  if (openrouterKey) {
+    onProgress?.('OpenRouter via Gemini try பண்றேன்...');
     try {
       const ctrl = new AbortController();
       const tmr = setTimeout(() => ctrl.abort(), 60000);
@@ -161,17 +171,15 @@ export async function imageToPrompt(imageUrl: string): Promise<string> {
       if (res.ok) {
         const data = await res.json() as any;
         const prompt = (data?.choices?.[0]?.message?.content ?? '').trim();
-        if (prompt) return prompt;
+        if (prompt && prompt.length > 20) return prompt;
       }
     } catch {}
   }
 
-  // ── 3. No key → helpful message ──
-  if (!geminiKey && !openrouterKey) {
+  if (allGeminiKeys.length === 0 && !openrouterKey) {
     throw new Error('🔑 Home → Keys → Gemini API key 1 enter பண்ணுங்க (aistudio.google.com இல் free)');
   }
-
-  throw new Error('Generate ஆகல. Gemini quota exceeded ஆகியிருக்கலாம். மீண்டும் try பண்ணுங்க.');
+  throw new Error('__ALL_KEYS_EXHAUSTED__');
 }
 
 export async function sendMessage(
@@ -195,7 +203,7 @@ export async function sendMessage(
   const allActiveKeys: string[] = [];
   for (let i = 1; i <= 13; i++) {
     const k = parsed[`gemini_${i}`];
-    if (k?.trim() && enabled[`gemini_${i}`]) allActiveKeys.push(k.trim());
+    if (k?.trim() && enabled[`gemini_${i}`] !== false) allActiveKeys.push(k.trim());
   }
   // Deduplicate starting from current key first
   const tryKeysOrdered = apiKey
