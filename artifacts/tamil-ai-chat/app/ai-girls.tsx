@@ -670,7 +670,7 @@ export default function AIGirlsScreen() {
     playRingtone(id);
   };
 
-  // ── Photo to Script (Gemini key direct → Qwen2-VL → Florence-2 → LLaVA) ──
+  // ── Photo to Script (Gemini key direct → All 13 Gemini keys auto-retry) ──
   const handlePhotoToScript = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { Alert.alert('Permission வேணும்', 'Photos access allow பண்ணுங்க'); return; }
@@ -698,7 +698,7 @@ export default function AIGirlsScreen() {
       setScriptText('Analyzing image...');
       try {
         const dataUri = `data:image/jpeg;base64,${base64}`;
-        const result = await imageToPrompt(dataUri);
+        const result = await imageToPrompt(dataUri, (msg) => setScriptText(msg));
         if (result && result.length > 50) {
           setScriptText(result);
           setScriptModelUsed('Gemini AI');
@@ -706,13 +706,17 @@ export default function AIGirlsScreen() {
           return;
         }
       } catch (geminiErr: any) {
-        // If no key at all, show key message and stop
         if (geminiErr?.message?.includes('🔑')) {
           setScriptText(geminiErr.message);
           setScriptLoading(false);
           return;
         }
-        // Otherwise fall through to HF models
+        if (geminiErr?.message?.includes('__ALL_KEYS_EXHAUSTED__')) {
+          setScriptText('அனைத்து 13 Gemini keys-உம் quota முடிந்துவிட்டது.\nநாளை try பண்ணுங்க (அல்லது OpenRouter key add பண்ணுங்க).');
+          setScriptLoading(false);
+          return;
+        }
+        // Otherwise fall through to HF fallback
       }
 
       // ── HF fallback: need HF key ────────────────────────────────────────
@@ -1415,7 +1419,7 @@ Then write these prompts:
                 <ActivityIndicator size="large" color="#7C3AED" />
                 <Text style={s.scriptLoadTxt}>{scriptText || '📸 Image analyze பண்றேன்...'}</Text>
                 <View style={s.scriptModelRow}>
-                  <Text style={s.scriptModelStep}>Qwen2-VL → Florence-2 → LLaVA</Text>
+                  <Text style={s.scriptModelStep}>All 13 Gemini keys auto-retry</Text>
                 </View>
               </View>
             ) : (
