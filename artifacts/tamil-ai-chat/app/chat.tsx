@@ -867,14 +867,24 @@ Each label: 1 sentence max.`;
               if (!perm.granted) { Alert.alert('Permission வேணும்', 'Gallery access allow பண்ணுங்க'); return; }
               const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.All,
-                base64: true,
-                quality: 0.7,
+                base64: false,
+                quality: 0.8,
               });
               if (result.canceled || !result.assets[0]) return;
               const asset = result.assets[0];
               const isVideo = asset.type === 'video';
-              const b64 = asset.base64;
-              if (!b64) { Alert.alert('Error', 'File read பண்ண முடியல'); return; }
+
+              // Read file as base64 using static FileSystem (asset.base64 is unreliable on Android)
+              let b64 = '';
+              try {
+                b64 = await FileSystem.readAsStringAsync(asset.uri, {
+                  encoding: FileSystem.EncodingType.Base64,
+                });
+              } catch {
+                Alert.alert('Error', 'Photo read பண்ண முடியல — மீண்டும் try பண்ணுங்க');
+                return;
+              }
+              if (!b64) { Alert.alert('Error', 'Photo data கிடைக்கல — மீண்டும் try பண்ணுங்க'); return; }
 
               const userMsg: Message = {
                 id: Date.now().toString(), role: 'user',
@@ -917,15 +927,14 @@ Each label: 1 sentence max.`;
               if (result.canceled || !result.assets?.[0]) return;
               const asset = result.assets[0];
 
-              // Read file as base64
+              // Read file as base64 using static FileSystem import
               let b64 = '';
               try {
-                const FileSystem = await import('expo-file-system');
-                b64 = await FileSystem.default.readAsStringAsync(asset.uri, {
-                  encoding: FileSystem.default.EncodingType.Base64,
+                b64 = await FileSystem.readAsStringAsync(asset.uri, {
+                  encoding: FileSystem.EncodingType.Base64,
                 });
               } catch (e) {
-                Alert.alert('Error', 'Document read பண்ண முடியல');
+                Alert.alert('Error', 'Document read பண்ண முடியல — மீண்டும் try பண்ணுங்க');
                 return;
               }
 
