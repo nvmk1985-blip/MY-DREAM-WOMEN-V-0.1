@@ -5,8 +5,6 @@ services:
     plan: free
     buildCommand: bash render-build.sh
     startCommand: node --enable-source-maps artifacts/api-server/dist/index.mjs
-    envVarGroups:
-      - Multimidia Key
     envVars:
       - key: NODE_ENV
         value: production
@@ -28,3 +26,4 @@ services:
         sync: false
       - key: AIFACESWAP_KEY
         sync: false
+      - fromGroup: Multimidia Key
