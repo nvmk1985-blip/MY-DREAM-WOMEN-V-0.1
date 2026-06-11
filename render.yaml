@@ -5,6 +5,8 @@ services:
     plan: free
     buildCommand: bash render-build.sh
     startCommand: node --enable-source-maps artifacts/api-server/dist/index.mjs
+    envVarGroups:
+      - Multimidia Key
     envVars:
       - key: NODE_ENV
         value: production
@@ -25,18 +27,4 @@ services:
       - key: AI_INTEGRATIONS_GEMINI_API_KEY
         sync: false
       - key: AIFACESWAP_KEY
-        sync: false
-      - key: Gemini_key_1
-        sync: false
-      - key: Gemini_key_2
-        sync: false
-      - key: Gemini_key_3
-        sync: false
-      - key: Gemini_key_4
-        sync: false
-      - key: Gemini_key_5
-        sync: false
-      - key: Gemini_key_6
-        sync: false
-      - key: groq_key
         sync: false
