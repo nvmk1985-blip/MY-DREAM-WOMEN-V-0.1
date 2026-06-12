@@ -300,8 +300,7 @@ export default function ChatScreen() {
           return btoa(b);
         }
         // Local file URI
-        const FS = await import('expo-file-system');
-        return await FS.default.readAsStringAsync(uri, { encoding: (FS.FileSystemEncodingType || FS.default.EncodingType || {Base64:'base64'}).Base64 ?? 'base64' });
+        return await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
       } catch { return ''; }
     };
 
@@ -874,18 +873,29 @@ Each label: 1 sentence max.`;
               const asset = result.assets[0];
               const isVideo = asset.type === 'video';
 
-              // Read file as base64 using static FileSystem (asset.base64 is unreliable on Android)
-              let b64 = '';
-              try {
-                const tempUri = FileSystem.cacheDirectory + 'chat_upload_' + Date.now();
-                await FileSystem.copyAsync({ from: asset.uri, to: tempUri });
-                b64 = await FileSystem.readAsStringAsync(tempUri, { encoding: FileSystem.EncodingType.Base64 });
-              } catch (e) {
-                console.error(e);
-                Alert.alert('Error', 'Photo read பண்ண முடியல — மீண்டும் try பண்ணுங்க');
+              // Validate file size
+              const fileSizeMB = (asset.fileSize || 0) / (1024 * 1024);
+              if (fileSizeMB > 25) {
+                Alert.alert('File Too Large 📁', `இந்த file ${fileSizeMB.toFixed(1)}MB உள்ளது — 25MB-க்கு கீழ் இருக்கணும்.`);
                 return;
               }
-              if (!b64) { Alert.alert('Error', 'Photo data கிடைக்கல — மீண்டும் try பண்ணுங்க'); return; }
+
+              // Read file as base64 (direct read — no copy needed)
+              let b64 = '';
+              try {
+                b64 = await FileSystem.readAsStringAsync(asset.uri, {
+                  encoding: FileSystem.EncodingType.Base64,
+                });
+              } catch (e: any) {
+                Alert.alert('❌ File Read பண்ண முடியல', `காரணம்: ${e?.message || 'Unknown error'}
+
+Storage permission allow பண்ணுங்க அல்லது வேற photo try பண்ணுங்க.`);
+                return;
+              }
+              if (!b64 || b64.length < 10) {
+                Alert.alert('❌ Empty File', 'File data கிடைக்கல — storage permission allow பண்ணுங்க அல்லது வேற file try பண்ணுங்க.');
+                return;
+              }
 
               const userMsg: Message = {
                 id: Date.now().toString(), role: 'user',
@@ -909,9 +919,10 @@ Each label: 1 sentence max.`;
                   content: reply, timestamp: new Date(),
                 }]);
               } catch (e: any) {
+                const errMsg = e?.message || 'Unknown error';
                 setMessages(prev => [...prev, {
                   id: (Date.now()+1).toString(), role: 'assistant',
-                  content: `${persona.name}: File analyze பண்ண முடியல! மீண்டும் try பண்ணுங்க 😔`,
+                  content: `${persona.name}: File analyze பண்ண முடியல 😔\n\nError: ${errMsg}`,
                   timestamp: new Date(),
                 }]);
               } finally { setFileLoading(false); }
@@ -928,15 +939,27 @@ Each label: 1 sentence max.`;
               if (result.canceled || !result.assets?.[0]) return;
               const asset = result.assets[0];
 
-              // Read file as base64 using static FileSystem import
+              // Validate file size
+              const docSizeMB = (asset.size || 0) / (1024 * 1024);
+              if (docSizeMB > 20) {
+                Alert.alert('File Too Large 📄', `இந்த document ${docSizeMB.toFixed(1)}MB உள்ளது — 20MB-க்கு கீழ் இருக்கணும்.`);
+                return;
+              }
+
+              // Read file as base64 (direct read)
               let b64 = '';
               try {
-                const tempUri = FileSystem.cacheDirectory + 'chat_doc_' + Date.now();
-                await FileSystem.copyAsync({ from: asset.uri, to: tempUri });
-                b64 = await FileSystem.readAsStringAsync(tempUri, { encoding: FileSystem.EncodingType.Base64 });
-              } catch (e) {
-                console.error(e);
-                Alert.alert('Error', 'Document read பண்ண முடியல — மீண்டும் try பண்ணுங்க');
+                b64 = await FileSystem.readAsStringAsync(asset.uri, {
+                  encoding: FileSystem.EncodingType.Base64,
+                });
+              } catch (e: any) {
+                Alert.alert('❌ Document Read பண்ண முடியல', `காரணம்: ${e?.message || 'Unknown error'}
+
+வேற format (PDF/TXT) try பண்ணுங்க.`);
+                return;
+              }
+              if (!b64 || b64.length < 10) {
+                Alert.alert('❌ Empty Document', 'Document data கிடைக்கல — கோப்பு சரியா இருக்கா பாருங்க.');
                 return;
               }
 
@@ -962,9 +985,10 @@ Each label: 1 sentence max.`;
                   content: reply, timestamp: new Date(),
                 }]);
               } catch (e: any) {
+                const docErrMsg = e?.message || 'Unknown error';
                 setMessages(prev => [...prev, {
                   id: (Date.now()+1).toString(), role: 'assistant',
-                  content: `${persona.name}: Document analyze பண்ண முடியல! மீண்டும் try பண்ணுங்க 😔`,
+                  content: `${persona.name}: Document analyze பண்ண முடியல 😔\n\nError: ${docErrMsg}`,
                   timestamp: new Date(),
                 }]);
               } finally { setFileLoading(false); }
