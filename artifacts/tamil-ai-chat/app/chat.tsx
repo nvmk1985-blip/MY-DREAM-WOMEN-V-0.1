@@ -873,10 +873,14 @@ Each label: 1 sentence max.`;
               const asset = result.assets[0];
               const isVideo = asset.type === 'video';
 
-              // Validate file size (>25MB → reject before even reading)
+              // Validate file size — video limit 19MB (Gemini inline cap), image 25MB
               const fileSizeMB = (asset.fileSize || 0) / (1024 * 1024);
-              if (fileSizeMB > 25) {
-                Alert.alert('File Too Large 📁', `இந்த file ${fileSizeMB.toFixed(1)}MB உள்ளது — 25MB-க்கு கீழ் இருக்கணும்.`);
+              const sizeLimit = isVideo ? 19 : 25;
+              if (fileSizeMB > sizeLimit) {
+                const tip = isVideo
+                  ? `வீடியோ ${fileSizeMB.toFixed(1)}MB உள்ளது 😔 19MB-க்கு கீழ் (சுமார் 30 sec) உள்ள clip அனுப்புங்க!`
+                  : `படம் ${fileSizeMB.toFixed(1)}MB உள்ளது — 25MB-க்கு கீழ் இருக்கணும்.`;
+                Alert.alert('File Too Large 📁', tip);
                 return;
               }
 
