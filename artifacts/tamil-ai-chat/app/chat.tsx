@@ -873,19 +873,21 @@ Each label: 1 sentence max.`;
               const asset = result.assets[0];
               const isVideo = asset.type === 'video';
 
-              // Validate file size
+              // Validate file size (>25MB → reject before even reading)
               const fileSizeMB = (asset.fileSize || 0) / (1024 * 1024);
               if (fileSizeMB > 25) {
                 Alert.alert('File Too Large 📁', `இந்த file ${fileSizeMB.toFixed(1)}MB உள்ளது — 25MB-க்கு கீழ் இருக்கணும்.`);
                 return;
               }
 
-              // Read file as base64 (direct read — no copy needed)
+              // content:// URIs (Android picker) MUST be copied to cacheDirectory first
+              // Direct readAsStringAsync on content:// fails — same pattern as face-swap.tsx
               let b64 = '';
               try {
-                b64 = await FileSystem.readAsStringAsync(asset.uri, {
-                  encoding: FileSystem.EncodingType.Base64,
-                });
+                const ext = isVideo ? 'mp4' : 'jpg';
+                const tmp = FileSystem.cacheDirectory + `chat_${Date.now()}.${ext}`;
+                await FileSystem.copyAsync({ from: asset.uri, to: tmp });
+                b64 = await FileSystem.readAsStringAsync(tmp, { encoding: FileSystem.EncodingType.Base64 });
               } catch (e: any) {
                 Alert.alert('❌ File Read பண்ண முடியல', `காரணம்: ${e?.message || 'Unknown error'}
 
@@ -939,19 +941,20 @@ Storage permission allow பண்ணுங்க அல்லது வேற p
               if (result.canceled || !result.assets?.[0]) return;
               const asset = result.assets[0];
 
-              // Validate file size
+              // Validate file size (>20MB → reject)
               const docSizeMB = (asset.size || 0) / (1024 * 1024);
               if (docSizeMB > 20) {
                 Alert.alert('File Too Large 📄', `இந்த document ${docSizeMB.toFixed(1)}MB உள்ளது — 20MB-க்கு கீழ் இருக்கணும்.`);
                 return;
               }
 
-              // Read file as base64 (direct read)
+              // content:// URIs MUST be copied to cacheDirectory first (same pattern as face-swap.tsx)
               let b64 = '';
               try {
-                b64 = await FileSystem.readAsStringAsync(asset.uri, {
-                  encoding: FileSystem.EncodingType.Base64,
-                });
+                const ext = asset.name?.split('.').pop() || 'pdf';
+                const tmp = FileSystem.cacheDirectory + `chat_doc_${Date.now()}.${ext}`;
+                await FileSystem.copyAsync({ from: asset.uri, to: tmp });
+                b64 = await FileSystem.readAsStringAsync(tmp, { encoding: FileSystem.EncodingType.Base64 });
               } catch (e: any) {
                 Alert.alert('❌ Document Read பண்ண முடியல', `காரணம்: ${e?.message || 'Unknown error'}
 
