@@ -15,14 +15,47 @@ const PORT = 3000;
 app.use(express.json({ limit: "150mb" }));
 app.use(express.urlencoded({ limit: "150mb", extended: true }));
 
-// Initialize Gemini Client
+// ── Multi-key Gemini rotation ────────────────────────────────────────
+function getGeminiKeys(): string[] {
+  const keys: string[] = [];
+  // Support GEMINI_API_KEY, GEMINI_API_KEY_2..6 and Gemini_key_1..6
+  const candidates = [
+    process.env.GEMINI_API_KEY,
+    ...Array.from({length:6},(_,i)=>process.env[`GEMINI_API_KEY_${i+2}`]),
+    ...Array.from({length:6},(_,i)=>process.env[`Gemini_key_${i+1}`]),
+  ];
+  for (const k of candidates) {
+    const t = k?.trim();
+    if (t && t.length > 10 && !keys.includes(t)) keys.push(t);
+  }
+  return keys;
+}
+
+async function tryGeminiMultiKey(contents: any, config: any): Promise<string> {
+  const keys = getGeminiKeys();
+  if (keys.length === 0) throw new Error("No Gemini API keys configured");
+  let lastErr: any;
+  for (const key of keys) {
+    try {
+      const client = new GoogleGenAI({
+        apiKey: key,
+        httpOptions: { headers: { "User-Agent": "aistudio-build" } },
+      });
+      const resp = await client.models.generateContent({ ...contents, config });
+      const text = (resp.text || "").trim();
+      if (text) return text;
+    } catch (e: any) {
+      lastErr = e;
+      continue;
+    }
+  }
+  throw lastErr || new Error("All Gemini keys failed");
+}
+
+// Legacy single-key client (used for non-analyze routes)
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || "",
-  httpOptions: {
-    headers: {
-      "User-Agent": "aistudio-build",
-    },
-  },
+  httpOptions: { headers: { "User-Agent": "aistudio-build" } },
 });
 
 // Uncensored, unfiltered, and broad safety settings to maximize read success and coverage
@@ -351,65 +384,59 @@ If the user also said: "${userPrompt || ""}", please address that naturally!
 Keep your explanation warm and lively.`;
       }
 
+      // Check image size (Gemini inline limit ~20MB file)
+      const imgSizeMB = (fileBase64.length * 3) / 4 / (1024 * 1024);
+      if (imgSizeMB > 18) {
+        return res.json({ reply: `படம் மிகவும் பெரியது (${imgSizeMB.toFixed(1)}MB) 😔 20MB-க்கு கீழ் உள்ள படத்தை try பண்ணுங்க!`, docText: "" });
+      }
       try {
-        const response = await ai.models.generateContent({
-          model: "gemini-2.0-flash",
-          contents: { parts: [imagePart, { text: finalPrompt }] },
-          config: { 
-            systemInstruction,
-            safetySettings: laxSafetySettings
-          }
-        });
-
-        return res.json({ reply: (response.text || "").trim(), docText: "" });
+        const geminiText = await tryGeminiMultiKey(
+          { model: "gemini-2.0-flash", contents: { parts: [imagePart, { text: finalPrompt }] } },
+          { systemInstruction, safetySettings: laxSafetySettings }
+        );
+        return res.json({ reply: geminiText, docText: "" });
       } catch (geminiErr: any) {
-        console.warn("Primary Gemini image reading failed. Triggering secondary Groq fallback...", geminiErr?.message || geminiErr);
+        console.warn("Gemini image failed:", geminiErr?.message);
         try {
           const groqReply = await tryGroqFallback("image", fileBase64, mimeType || "image/png", finalPrompt, systemInstruction);
-          return res.json({ reply: `${groqReply}\n\n*(Secondary Groq AI fallback மூலம் பகுப்பாய்வு செய்யப்பட்டது)*`, docText: "" });
-        } catch (groqErr: any) {
-          console.error("Secondary Groq image reading failed too.", groqErr?.message || groqErr);
-          const fallbackAnswer = "ஆஹா! உங்கள் கேலரியில் இருந்து மிகவும் அருமையான புகைப்படத்தை அனுப்பியுள்ளீர்கள்! எனது பிரைமரி ஜெமினி மற்றும் கிராக் AI சேவைகள் தற்காலிகமாக பிஸியாக உள்ளன, ஆனால் படம் அசத்தலாக இருக்கிறது செல்லக்குட்டி! 😍📸✨";
-          return res.json({ reply: fallbackAnswer, docText: "" });
-        }
+          if (groqReply) return res.json({ reply: groqReply, docText: "" });
+        } catch {}
+        return res.json({ reply: `படம் analyze பண்ண இப்போது முடியல 😔 API quota முடிஞ்சிருக்கு — கொஞ்சம் நேரம் கழிச்சு try பண்ணுங்க!`, docText: "" });
       }
 
     } else if (fileType === "video") {
-      const videoPart = {
-        inlineData: {
-          data: fileBase64,
-          mimeType: mimeType || "video/mp4"
-        }
-      };
+      // Video size check — Gemini inline supports up to ~20MB file (~27MB base64)
+      const videoSizeMB = (fileBase64.length * 3) / 4 / (1024 * 1024);
+      console.log(`[Video] size: ${videoSizeMB.toFixed(1)}MB`);
 
-      const finalPrompt = `
-Analyze the content of this video named "${fileName}". 
-Describe what is visible, what is happening, and summarize the actions or scene.
-Talk about this video naturally in sweet colloquial Tamil as Kaviya!
-If the user added a request: "${userPrompt || ""}", address it directly or summarize it if they asked.`;
+      const finalPrompt = `Analyze the content of this video named "${fileName}".
+Describe what you see naturally as a sweet Tamil girl (Kaviya).
+${userPrompt ? `User request: "${userPrompt}"` : ""}`;
 
-      try {
-        const response = await ai.models.generateContent({
-          model: "gemini-2.0-flash",
-          contents: { parts: [videoPart, { text: finalPrompt }] },
-          config: { 
-            systemInstruction,
-            safetySettings: laxSafetySettings
-          }
-        });
-
-        return res.json({ reply: (response.text || "").trim(), docText: "" });
-      } catch (geminiErr: any) {
-        console.warn("Primary Gemini video reading failed. Triggering secondary Groq fallback...", geminiErr?.message || geminiErr);
+      if (videoSizeMB <= 19) {
+        // Try Gemini inline (works for small videos <20MB)
+        const videoPart = { inlineData: { data: fileBase64, mimeType: mimeType || "video/mp4" } };
         try {
-          const groqReply = await tryGroqFallback("video", fileBase64, mimeType || "video/mp4", finalPrompt, systemInstruction);
-          return res.json({ reply: `${groqReply}\n\n*(Secondary Groq AI fallback மூலம் பகுப்பாய்வு செய்யப்பட்டது)*`, docText: "" });
-        } catch (groqErr: any) {
-          console.error("Secondary Groq video reading failed too.", groqErr?.message || groqErr);
-          const fallbackAnswer = "வாவ்! அருமையான வீடியோ பதிவை பகிர்ந்துள்ளீர்கள்! எனது ஜெமினி மற்றும் செகண்டரி கிராக் AI சேவைகள் தற்காலிகமாக ஓய்வில் இருப்பதால் இதை முழுமையாக படிக்க முடியவில்லை. இருந்தாலும் வீடியோ சூப்பர்! 🎥🍿✨";
-          return res.json({ reply: fallbackAnswer, docText: "" });
+          const geminiText = await tryGeminiMultiKey(
+            { model: "gemini-2.0-flash", contents: { parts: [videoPart, { text: finalPrompt }] } },
+            { systemInstruction, safetySettings: laxSafetySettings }
+          );
+          return res.json({ reply: geminiText, docText: "" });
+        } catch (e: any) {
+          console.warn("Gemini video inline failed:", e?.message);
         }
+      } else {
+        console.warn(`[Video] Too large for Gemini inline (${videoSizeMB.toFixed(1)}MB) — skipping to Groq`);
       }
+
+      // Groq text-only fallback (Groq can't analyze video binary)
+      try {
+        const groqFallbackPrompt = `User sent a video file named "${fileName}" (${videoSizeMB.toFixed(0)}MB). You cannot watch the video directly. Respond warmly as Kaviya in Tamil — express excitement about the video, ask what it's about, stay in character. Do NOT make up technical error reasons or suggest clip length limits.`;
+        const groqReply = await tryGroqFallback("video", "", mimeType || "video/mp4", groqFallbackPrompt, systemInstruction);
+        if (groqReply) return res.json({ reply: groqReply, docText: "" });
+      } catch {}
+
+      return res.json({ reply: `வீடியோ analyze பண்ண இப்போது முடியல 😔 API quota முடிஞ்சிருக்கு — கொஞ்சம் நேரம் கழிச்சு try பண்ணுங்க!`, docText: "" });
 
     } else if (fileType === "document") {
       if (fileName.toLowerCase().endsWith(".pdf")) {
@@ -427,26 +454,18 @@ If the user's prompt is empty or just generic, please provide a sweet Tamil summ
 Speak in Kaviya's personality.`;
 
         try {
-          const response = await ai.models.generateContent({
-            model: "gemini-2.0-flash",
-            contents: { parts: [pdfPart, { text: finalPrompt }] },
-            config: { 
-              systemInstruction,
-              safetySettings: laxSafetySettings
-            }
-          });
-
-          return res.json({ reply: (response.text || "").trim(), docText: "[PDF Content Analyzed]" });
+          const geminiText = await tryGeminiMultiKey(
+            { model: "gemini-2.0-flash", contents: { parts: [pdfPart, { text: finalPrompt }] } },
+            { systemInstruction, safetySettings: laxSafetySettings }
+          );
+          return res.json({ reply: geminiText, docText: "[PDF Analyzed]" });
         } catch (geminiErr: any) {
-          console.warn("Primary Gemini PDF reading failed. Triggering secondary Groq fallback...", geminiErr?.message || geminiErr);
+          console.warn("Gemini PDF failed:", geminiErr?.message);
           try {
             const groqReply = await tryGroqFallback("document", fileBase64, "application/pdf", finalPrompt, systemInstruction);
-            return res.json({ reply: `${groqReply}\n\n*(Secondary Groq AI fallback மூலம் பகுப்பாய்வு செய்யப்பட்டது)*`, docText: "[PDF Content Analyzed]" });
-          } catch (groqErr: any) {
-            console.error("Secondary Groq PDF reading failed too.", groqErr?.message || groqErr);
-            const fallbackAnswer = `கோப்பைப் படிக்க முடியவில்லை செல்லக்குட்டி! 😔 எனது பிரைமரி மற்றும் செகண்டரி AI நெட்வொர்க் பிஸியாக உள்ளது.`;
-            return res.json({ reply: fallbackAnswer, docText: "[PDF Fail]" });
-          }
+            if (groqReply) return res.json({ reply: groqReply, docText: "[PDF via Groq]" });
+          } catch {}
+          return res.json({ reply: `PDF படிக்க இப்போது முடியல 😔 API quota முடிஞ்சிருக்கு — கொஞ்சம் நேரம் கழிச்சு try பண்ணுங்க!`, docText: "" });
         }
       } else {
         const finalPrompt = `
@@ -459,26 +478,18 @@ If the user's prompt is empty, please give a beautifully written summary of the 
 Return Kaviya's chat response and edit details with beautiful formatting. Ensure any generated/updated document text is shown clearly.`;
 
         try {
-          const response = await ai.models.generateContent({
-            model: "gemini-2.0-flash",
-            contents: finalPrompt,
-            config: { 
-              systemInstruction,
-              safetySettings: laxSafetySettings
-            }
-          });
-
-          return res.json({ reply: (response.text || "").trim(), docText: extractedText });
+          const geminiText = await tryGeminiMultiKey(
+            { model: "gemini-2.0-flash", contents: finalPrompt },
+            { systemInstruction, safetySettings: laxSafetySettings }
+          );
+          return res.json({ reply: geminiText, docText: extractedText });
         } catch (geminiErr: any) {
-          console.warn("Primary Gemini document reading failed. Triggering secondary Groq fallback...", geminiErr?.message || geminiErr);
+          console.warn("Gemini doc failed:", geminiErr?.message);
           try {
             const groqReply = await tryGroqFallback("document", Buffer.from(extractedText).toString("base64"), "text/plain", finalPrompt, systemInstruction);
-            return res.json({ reply: `${groqReply}\n\n*(Secondary Groq AI fallback மூலம் பகுப்பாய்வு செய்யப்பட்டது)*`, docText: extractedText });
-          } catch (groqErr: any) {
-            console.error("Secondary Groq document reading failed too.", groqErr?.message || groqErr);
-            const fallbackAnswer = `செல்லக்குட்டி! எனது பிரைமரி ஜெமினி மற்றும் கிராக் AI சேவைகள் தற்காலிகமாக பிஸியாக இருப்பதால் இந்த கோப்பை பகுப்பாய்வு செய்ய முடியவில்லை. 😔`;
-            return res.json({ reply: fallbackAnswer, docText: extractedText });
-          }
+            if (groqReply) return res.json({ reply: groqReply, docText: extractedText });
+          } catch {}
+          return res.json({ reply: `Document analyze பண்ண இப்போது முடியல 😔 API quota முடிஞ்சிருக்கு — கொஞ்சம் நேரம் கழிச்சு try பண்ணுங்க!`, docText: extractedText });
         }
       }
     }
