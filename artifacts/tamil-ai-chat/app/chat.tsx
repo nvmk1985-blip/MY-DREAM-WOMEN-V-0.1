@@ -1783,7 +1783,18 @@ Storage permission allow பண்ணுங்க அல்லது வேற p
           </View>
           {/* Compact input bar — WhatsApp style */}
           <View style={styles.inputBar}>
-            {/* Input wrapper: text + 📎 inside the rounded box */}
+            {/* Attach button — LEFT side */}
+            <TouchableOpacity
+              style={styles.attachBtn}
+              onPress={handleFileAttach}
+              disabled={fileLoading || loading}
+            >
+              {fileLoading
+                ? <ActivityIndicator color="#999" size="small" />
+                : <Text style={{ fontSize: 20, color: '#888' }}>📎</Text>
+              }
+            </TouchableOpacity>
+            {/* Input wrapper: text only */}
             <View style={styles.inputWrapper}>
               <TextInput
                 style={styles.input}
@@ -1794,16 +1805,6 @@ Storage permission allow பண்ணுங்க அல்லது வேற p
                 multiline
                 maxLength={1000}
               />
-              <TouchableOpacity
-                style={styles.attachBtn}
-                onPress={handleFileAttach}
-                disabled={fileLoading || loading}
-              >
-                {fileLoading
-                  ? <ActivityIndicator color="#999" size="small" />
-                  : <Text style={{ fontSize: 20, color: '#888' }}>📎</Text>
-                }
-              </TouchableOpacity>
             </View>
             <TouchableOpacity
               style={[styles.sendBtn, (!input.trim() || loading) && styles.sendBtnDisabled]}
@@ -2457,7 +2458,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', gap: 8, zIndex: 100,
   },
   chatFabItem: {
-    width: 44, height: 44, borderRadius: 22,
+    width: 52, height: 52, borderRadius: 26,
     justifyContent: 'center', alignItems: 'center',
     elevation: 5,
     shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
@@ -2470,7 +2471,6 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flex: 1, flexDirection: 'row', alignItems: 'flex-end',
     backgroundColor: '#fff', borderRadius: 24, borderWidth: 1, borderColor: '#ddd',
-    paddingRight: 4,
   },
   input: { flex: 1, paddingHorizontal: 16, paddingVertical: 10, fontSize: 15, maxHeight: 120, color: '#111', minHeight: 44 },
   btnStack: { flexDirection: 'row', gap: 6, alignItems: 'center' },
@@ -2479,9 +2479,9 @@ const styles = StyleSheet.create({
   cameraBtn: { backgroundColor: '#E53935', width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center', elevation: 3 },
   translateBtn: { backgroundColor: '#1565C0', width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center', elevation: 3 },
   cameraIcon: { fontSize: 18 },
-  sendBtn: { backgroundColor: '#00897B', width: 46, height: 46, borderRadius: 23, justifyContent: 'center', alignItems: 'center', elevation: 2 },
-  sendBtnDisabled: { backgroundColor: '#80CBC4' },
-  attachBtn: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginBottom: 4, marginRight: 2 },
+  sendBtn: { backgroundColor: '#25D366', width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', elevation: 2 },
+  sendBtnDisabled: { backgroundColor: '#a8dfc4' },
+  attachBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   sendIcon: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   pickerSheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingBottom: 10, maxHeight: '85%' },
