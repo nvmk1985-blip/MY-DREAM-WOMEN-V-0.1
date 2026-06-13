@@ -52,6 +52,8 @@ import {
 import { saveGeneratedImageToCloud } from './cloud-storage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as MediaLibrary from 'expo-media-library';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { ALL_PERSONAS, Persona } from '../constants/personas';
@@ -851,6 +853,29 @@ Each label: 1 sentence max.`;
   };
 
 
+
+  // ── Save AI image to device gallery ──────────────────────────────────────
+  const saveAiImageToGallery = async (imageUrl: string) => {
+    try {
+      // Request MediaLibrary permission
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission வேணும் 📷', 'Gallery-ல் save பண்ண permission allow பண்ணுங்க — Settings → Apps → Permissions');
+        return;
+      }
+      // Download image to cache
+      const filename = `ai_girl_${Date.now()}.jpg`;
+      const localUri = FileSystem.cacheDirectory + filename;
+      const { uri } = await FileSystem.downloadAsync(imageUrl, localUri);
+      // Save to gallery
+      await MediaLibrary.saveToLibraryAsync(uri);
+      FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => {});
+      Alert.alert('✅ Saved!', 'படம் Gallery-ல் save ஆச்சு! 🎉');
+    } catch (e: any) {
+      Alert.alert('❌ Save பண்ண முடியல', e?.message || 'மீண்டும் try பண்ணுங்க.');
+    }
+  };
+
   const handleFileAttach = useCallback(async () => {
     if (!persona) return;
     try {
@@ -888,14 +913,29 @@ Each label: 1 sentence max.`;
               // Direct readAsStringAsync on content:// fails — same pattern as face-swap.tsx
               let b64 = '';
               try {
-                const ext = isVideo ? 'mp4' : 'jpg';
-                const tmp = FileSystem.cacheDirectory + `chat_${Date.now()}.${ext}`;
-                await FileSystem.copyAsync({ from: asset.uri, to: tmp });
-                b64 = await FileSystem.readAsStringAsync(tmp, { encoding: FileSystem.EncodingType.Base64 });
+                if (isVideo) {
+                  // Video: copy to cache then read as base64 (no compression)
+                  const tmp = FileSystem.cacheDirectory + `chat_${Date.now()}.mp4`;
+                  await FileSystem.copyAsync({ from: asset.uri, to: tmp });
+                  b64 = await FileSystem.readAsStringAsync(tmp, { encoding: FileSystem.EncodingType.Base64 });
+                } else {
+                  // Image: compress to max 1280px width, JPEG 70% quality → smaller base64
+                  const compressed = await ImageManipulator.manipulateAsync(
+                    asset.uri,
+                    [{ resize: { width: 1280 } }],
+                    { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+                  );
+                  b64 = await FileSystem.readAsStringAsync(compressed.uri, {
+                    encoding: FileSystem.EncodingType.Base64,
+                  });
+                  // Clean up compressed temp file
+                  FileSystem.deleteAsync(compressed.uri, { idempotent: true }).catch(() => {});
+                }
               } catch (e: any) {
                 Alert.alert('❌ File Read பண்ண முடியல', `காரணம்: ${e?.message || 'Unknown error'}
 
-Storage permission allow பண்ணுங்க அல்லது வேற photo try பண்ணுங்க.`);
+• Photo-க்கு: Gallery permission allow பண்ணுங்க
+• Video-க்கு: 19MB-க்கு கீழ் clip try பண்ணுங்க`);
                 return;
               }
               if (!b64 || b64.length < 10) {
@@ -1563,10 +1603,21 @@ Storage permission allow பண்ணுங்க அல்லது வேற p
               <Text selectable style={[styles.msgText, { color: msgTextColor }]}>{item.content}</Text>
             </View>
           ) : item.imageUrl ? (
-            <TouchableOpacity onPress={() => setFullViewImg(item.imageUrl!)} onLongPress={() => setSelectedMsg(item)} delayLongPress={400}>
-              <Image source={{ uri: item.imageUrl }} style={styles.generatedImg} resizeMode="cover" />
-              <Text selectable style={[styles.msgText, { color: msgTextColor, marginTop: 4 }]}>{item.content}</Text>
-            </TouchableOpacity>
+            <View>
+              <TouchableOpacity onPress={() => setFullViewImg(item.imageUrl!)} onLongPress={() => setSelectedMsg(item)} delayLongPress={400}>
+                <Image source={{ uri: item.imageUrl }} style={styles.generatedImg} resizeMode="cover" />
+              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, gap: 8 }}>
+                <Text selectable style={[styles.msgText, { color: msgTextColor, flex: 1 }]}>{item.content}</Text>
+                <TouchableOpacity
+                  onPress={() => saveAiImageToGallery(item.imageUrl!)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(37,211,102,0.15)', borderRadius: 8, paddingVertical: 5, paddingHorizontal: 10, borderWidth: 1, borderColor: 'rgba(37,211,102,0.4)' }}
+                >
+                  <Text style={{ fontSize: 14 }}>💾</Text>
+                  <Text style={{ color: '#25D366', fontSize: 11, fontWeight: '700' }}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           ) : (
             <Text selectable style={[styles.msgText, { color: msgTextColor }]}>{item.content}</Text>
           )}
