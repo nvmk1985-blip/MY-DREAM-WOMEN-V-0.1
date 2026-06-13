@@ -12,7 +12,7 @@ function getFileGeminiKeys(): string[] {
       process.env[`GEMINI_KEY_${i}`] ||
       process.env[`Gemini_Key_${i}`];
     const k = val?.trim();
-    if (k && k.startsWith("AIzaSy")) keys.push(k);
+    if (k && k.length > 10) keys.push(k);
   }
   if (keys.length === 0)
     console.log(
