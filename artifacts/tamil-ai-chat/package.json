@@ -55,6 +55,7 @@
     "expo-file-system": "~19.0.22",
     "expo-media-library": "^18.2.1",
     "expo-notifications": "^0.31.5",
-    "expo-sharing": "^14.0.8"
+    "expo-sharing": "^14.0.8",
+    "expo-image-manipulator": "~13.0.8"
   }
 }
