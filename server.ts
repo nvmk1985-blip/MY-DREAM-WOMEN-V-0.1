@@ -225,9 +225,10 @@ async function tryGroqFallback(
   prompt: string,
   systemInstruction: string
 ): Promise<string> {
-  const groqApiKey = process.env.GROQ_API_KEY;
+  // Support Groq_key / groq_key / GROQ_KEY / GROQ_API_KEY (Render env var naming)
+  const groqApiKey = process.env["Groq_key"] || process.env["groq_key"] || process.env["GROQ_KEY"] || process.env["GROQ_API_KEY"];
   if (!groqApiKey) {
-    throw new Error("GROQ_API_KEY is not defined. Skipping Groq fallback.");
+    throw new Error("Groq key not found (tried Groq_key, groq_key, GROQ_KEY, GROQ_API_KEY)");
   }
 
   console.log(`[Groq Fallback] Activating Groq AI fallback... Type: ${fileType}`);
