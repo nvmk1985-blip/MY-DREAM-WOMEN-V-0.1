@@ -21,6 +21,7 @@
     "cors": "^2",
     "drizzle-orm": "catalog:",
     "express": "^5",
+    "mammoth": "^1.8.0",
     "pino": "^9",
     "pino-http": "^10",
     "web-push": "^3.6.7"
