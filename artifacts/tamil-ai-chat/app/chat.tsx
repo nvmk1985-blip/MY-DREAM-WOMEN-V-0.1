@@ -898,12 +898,12 @@ Each label: 1 sentence max.`;
               const asset = result.assets[0];
               const isVideo = asset.type === 'video';
 
-              // Validate file size — video limit 19MB (Gemini inline cap), image 25MB
+              // Validate file size — video limit 100MB (File API), image 25MB
               const fileSizeMB = (asset.fileSize || 0) / (1024 * 1024);
-              const sizeLimit = isVideo ? 19 : 25;
+              const sizeLimit = isVideo ? 100 : 25;
               if (fileSizeMB > sizeLimit) {
                 const tip = isVideo
-                  ? `வீடியோ ${fileSizeMB.toFixed(1)}MB உள்ளது 😔 19MB-க்கு கீழ் (சுமார் 30 sec) உள்ள clip அனுப்புங்க!`
+                  ? `வீடியோ ${fileSizeMB.toFixed(1)}MB உள்ளது 😔 100MB-க்கு கீழ் (சுமார் 5-8 min) உள்ள clip அனுப்புங்க!`
                   : `படம் ${fileSizeMB.toFixed(1)}MB உள்ளது — 25MB-க்கு கீழ் இருக்கணும்.`;
                 Alert.alert('File Too Large 📁', tip);
                 return;
@@ -935,7 +935,7 @@ Each label: 1 sentence max.`;
                 Alert.alert('❌ File Read பண்ண முடியல', `காரணம்: ${e?.message || 'Unknown error'}
 
 • Photo-க்கு: Gallery permission allow பண்ணுங்க
-• Video-க்கு: 19MB-க்கு கீழ் clip try பண்ணுங்க`);
+• Video-க்கு: 100MB-க்கு கீழ் clip try பண்ணுங்க`);
                 return;
               }
               if (!b64 || b64.length < 10) {
