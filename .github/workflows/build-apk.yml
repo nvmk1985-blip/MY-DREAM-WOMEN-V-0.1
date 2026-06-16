@@ -25,15 +25,10 @@ jobs:
       - name: Setup Android SDK
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "Available SDK tools:"
-          ls $ANDROID_HOME/cmdline-tools/ 2>/dev/null || echo "cmdline-tools not found"
-          ls $ANDROID_HOME/platform-tools/ 2>/dev/null || echo "platform-tools not found"
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           if [ -f "$SDKMANAGER" ]; then
-            echo "Using sdkmanager at $SDKMANAGER"
             yes | $SDKMANAGER "platform-tools" "build-tools;34.0.0" "platforms;android-34" 2>/dev/null || true
           else
-            echo "sdkmanager not found at latest — trying other paths"
             SDKMANAGER2=$(find $ANDROID_HOME/cmdline-tools -name sdkmanager 2>/dev/null | head -1)
             if [ -n "$SDKMANAGER2" ]; then
               yes | $SDKMANAGER2 "platform-tools" "build-tools;34.0.0" "platforms;android-34" 2>/dev/null || true
@@ -191,6 +186,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v${{ github.run_number }}"
+          # Delete existing release+tag if re-run on same run number
+          gh release delete "$TAG" --yes --cleanup-tag \
+            --repo ${{ github.repository }} 2>/dev/null || true
+          sleep 2
           gh release create "$TAG" "$APK_NAME" \
             --title "My Dream Women — Build ${{ github.run_number }}" \
             --notes "Build ${{ github.run_number }} — New icon + name update" \
