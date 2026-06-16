@@ -186,16 +186,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v${{ github.run_number }}"
-          # Delete existing release+tag if re-run on same run number
           gh release delete "$TAG" --yes --cleanup-tag \
             --repo ${{ github.repository }} 2>/dev/null || true
           sleep 2
           gh release create "$TAG" "$APK_NAME" \
             --title "My Dream Women — Build ${{ github.run_number }}" \
-            --notes "Build ${{ github.run_number }} — New icon + name update" \
+            --notes "Build ${{ github.run_number }} — image+video analysis fix" \
             --latest \
             --repo ${{ github.repository }}
           echo "https://github.com/${{ github.repository }}/releases/download/$TAG/$APK_NAME"
+
+      - name: Trigger Render Redeploy
+        run: |
+          echo "Triggering Render API server redeploy..."
+          RESP=$(curl -s -o /tmp/render_resp.json -w "%{http_code}" \
+            "https://api.render.com/deploy/srv-d8oe990k1i2s738h0uhg?key=0Fux6gEI8vw")
+          echo "Render deploy status: $RESP"
+          cat /tmp/render_resp.json || true
+          echo "Render redeploy triggered — server will update in ~2 min"
 
       - name: Upload build log on failure
         if: failure()
