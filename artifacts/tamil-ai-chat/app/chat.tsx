@@ -1176,18 +1176,7 @@ Each label: 1 sentence max.`;
       return;
     }
 
-    // ── Text-based photo request detection ──────────────────────────
-    // If user typed a photo request, show photo directly (same as camera button)
-    const detectedPhotoStyle = detectPhotoStyle(text, PHOTO_STYLES, selectedStyleId);
-    if (detectedPhotoStyle !== null) {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(), role: 'user', content: text, timestamp: new Date(),
-      }]);
-      setInput('');
-      // Slight delay so user message renders first
-      setTimeout(() => handleShowGalleryInChat(detectedPhotoStyle), 50);
-      return;
-    }
+    // Text-based photo detection disabled — user prefers to use camera icon list
 
 
     const userMsg: Message = { id: Date.now().toString(), role: 'user', content: text, timestamp: new Date() };
@@ -1375,8 +1364,8 @@ Each label: 1 sentence max.`;
     setSelectedStyleId(styleId);
     const photos = await getStylePhotos(persona.id, styleId);
     if (photos.length === 0) {
-      // Photos இல்லையெனில் alert பதிலாக auto-generate — camera tap action
-      handleGeneratePhoto(styleId);
+      const styleLabel = PHOTO_STYLES.find(s => s.id === styleId)?.label ?? styleId;
+      Alert.alert('Photos இல்லை 📷', `${persona.name}-ஓட "${styleLabel}" photos Cloudinary-ல் இல்லை.\n\nCloudinary-ல் photos சேர்த்த பிறகு இங்கே தெரியும்.`);
       return;
     }
     const styleLabel = PHOTO_STYLES.find(s => s.id === styleId)?.label ?? styleId;
@@ -2033,37 +2022,6 @@ Each label: 1 sentence max.`;
                 })}
               </ScrollView>
 
-              {/* ── Generate panel (collapsible) ── */}
-              <View style={styles.generateSection}>
-                <TouchableOpacity
-                  style={styles.generateToggle}
-                  onPress={() => setShowGeneratePanel(p => !p)}
-                  disabled={generatingPhoto}
-                >
-                  <Text style={styles.generateToggleTxt}>
-                    {generatingPhoto ? '⏳ Generating...' : (showGeneratePanel ? '▲ AI Generate மூடு' : '🎨 AI Generate (New Photo)')}
-                  </Text>
-                </TouchableOpacity>
-
-                {showGeneratePanel && !generatingPhoto && (
-                  <View style={styles.generateInner}>
-                    <View style={styles.hfBadge}>
-                      <Text style={styles.hfBadgeTxt}>🤗 HuggingFace Token: Settings-ல் save பண்ணினா HF AI use ஆகும்</Text>
-                    </View>
-                    <TextInput
-                      style={styles.genInput}
-                      value={genPrompt}
-                      onChangeText={setGenPrompt}
-                      placeholder="e.g. sitting on bed, smiling..."
-                      placeholderTextColor="#aaa"
-                      multiline
-                    />
-                    <TouchableOpacity style={styles.genBtn} onPress={handleGeneratePhoto}>
-                      <Text style={styles.genBtnText}>🎨 Generate (1–3 min)</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
 
             </View>
           </TouchableOpacity>
