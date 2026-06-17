@@ -587,7 +587,8 @@ export async function generateImageHuggingFace(
 
 // ── File Analysis — uses dedicated server-side Gemini_key_1..6 + groq_key ────
 export async function analyzeFile(params: {
-  fileBase64: string;
+  fileBase64?: string;
+  fileUrl?: string;
   fileName: string;
   fileType: 'image' | 'video' | 'document';
   mimeType: string;
