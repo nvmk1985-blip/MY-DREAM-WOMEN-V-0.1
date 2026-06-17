@@ -1068,8 +1068,14 @@ Each label: 1 sentence max.`;
       setFileLoading(true);
 
       // 3. Analyze with Gemini/Groq
+      // If Cloudinary upload succeeded → send URL only (tiny payload, no base64 travel)
+      // If Cloudinary failed → fallback to base64
+      const cloudUploadSucceeded = cloudUrl.startsWith('http') && cloudUrl.includes('cloudinary');
       const { reply } = await analyzeFile({
-        fileBase64: b64,
+        ...(cloudUploadSucceeded
+          ? { fileUrl: cloudUrl }          // ✅ URL only — 50 bytes, not MBs!
+          : { fileBase64: b64 }            // ⚠️ Fallback: base64
+        ),
         fileName,
         fileType: isVideo ? 'video' : 'image',
         mimeType,
