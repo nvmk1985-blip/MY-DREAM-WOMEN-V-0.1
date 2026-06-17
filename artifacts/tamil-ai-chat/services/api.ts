@@ -47,6 +47,7 @@ export interface Message {
   galleryLabel?: string;
   sentMediaType?: 'image' | 'video';
   sentMediaUri?: string;
+  caption?: string;
 }
 
 // ── Gemini key rotation helper ─────────────────────────────────
