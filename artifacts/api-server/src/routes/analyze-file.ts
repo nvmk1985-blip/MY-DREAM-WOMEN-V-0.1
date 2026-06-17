@@ -19,7 +19,7 @@ function getServerGeminiKeys(): string[] {
   return [...new Set(
     candidates
       .map(k => k?.trim() ?? "")
-      .filter(k => k.length > 10 && k.startsWith("AIza"))
+      .filter(k => k.length > 10 && (k.startsWith("AIza") || k.startsWith("AQ")))
   )];
 }
 
@@ -57,7 +57,7 @@ async function tryGeminiKeys(
     try {
       const ai = new GoogleGenAI({ apiKey: key });
       const resp = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-2.5-flash",
         contents,
         config: {
           systemInstruction,
@@ -66,7 +66,8 @@ async function tryGeminiKeys(
       });
       const text = (resp.text || "").trim();
       if (text) return text;
-    } catch {
+    } catch (err: any) {
+      console.error(`[Gemini Error] Key ${key.slice(0, 10)}... failed:`, err.message || err);
       continue;
     }
   }
@@ -202,17 +203,12 @@ router.post("/analyze-file", async (req, res) => {
         : `User shared a photo with ${characterName}. React naturally and sweetly in Tamil — describe what you see.`;
 
       const geminiContents = [
+        prompt,
         {
-          role: "user",
-          parts: [
-            {
-              inlineData: {
-                data: fileBase64,
-                mimeType: mimeType || "image/jpeg",
-              },
-            },
-            { text: prompt },
-          ],
+          inlineData: {
+            data: fileBase64,
+            mimeType: mimeType || "image/jpeg",
+          },
         },
       ];
       const geminiReply = await tryGeminiKeys(geminiContents, systemInstruction, allGeminiKeys);
@@ -267,7 +263,7 @@ router.post("/analyze-file", async (req, res) => {
           ];
 
           const resp = await ai.models.generateContent({
-            model: "gemini-1.5-flash",
+            model: "gemini-2.5-flash",
             contents: geminiContents,
             config: { systemInstruction, safetySettings: laxSafety },
           });
