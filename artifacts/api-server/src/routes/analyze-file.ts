@@ -52,7 +52,12 @@ async function tryGeminiKeys(
   contents: any,
   systemInstruction: string,
   keys: string[],
-): Promise<string | null> {
+): Promise<{ text: string | null; errors: string[] }> {
+  const errors: string[] = [];
+  if (keys.length === 0) {
+    errors.push("Gemini API key இல்லை — Home → Keys-ல் சேர்க்கவும்");
+    return { text: null, errors };
+  }
   for (const key of keys) {
     try {
       const ai = new GoogleGenAI({ apiKey: key });
@@ -65,13 +70,15 @@ async function tryGeminiKeys(
         },
       });
       const text = (resp.text || "").trim();
-      if (text) return text;
+      if (text) return { text, errors };
     } catch (err: any) {
-      console.error(`[Gemini Error] Key ${key.slice(0, 10)}... failed:`, err.message || err);
+      const msg = err.message || String(err);
+      console.error(`[Gemini Error] Key ${key.slice(0, 10)}... failed:`, msg);
+      errors.push(`Key ...${key.slice(-6)}: ${msg}`);
       continue;
     }
   }
-  return null;
+  return { text: null, errors };
 }
 
 async function tryGroqText(
@@ -211,15 +218,18 @@ router.post("/analyze-file", async (req, res) => {
           },
         },
       ];
-      const geminiReply = await tryGeminiKeys(geminiContents, systemInstruction, allGeminiKeys);
+      const { text: geminiReply, errors: imgErrors } = await tryGeminiKeys(geminiContents, systemInstruction, allGeminiKeys);
       if (geminiReply) return res.json({ reply: geminiReply });
 
       const groqPrompt = `User shared a photo (${fileName}). ${userPrompt ? `They said: "${userPrompt}".` : ""} You can't see the image directly. React sweetly in Tamil — ask what's in the photo, compliment them for sharing, stay in character.`;
       const groqReply = await tryGroqText(systemInstruction, groqPrompt);
-      if (groqReply) return res.json({ reply: groqReply });
+      const debugBlock = imgErrors.length > 0
+        ? `\n\n⚠️ Gemini Debug:\n${imgErrors.map(e => `• ${e}`).join("\n")}`
+        : "";
+      if (groqReply) return res.json({ reply: groqReply + debugBlock });
 
       return res.json({
-        reply: `${characterName}: ஐயோ, படம் load ஆகல 😅 மறுபடியும் try பண்ணுங்க! Home → Keys-ல் Gemini API key add பண்ணுங்க.`,
+        reply: `${characterName}: ஐயோ, படம் load ஆகல 😅 Home → Keys-ல் Gemini API key add பண்ணுங்க.${debugBlock}`,
       });
     }
 
@@ -231,6 +241,9 @@ router.post("/analyze-file", async (req, res) => {
 
       const videoBuffer = Buffer.from(fileBase64, "base64");
       const videoBlob = new Blob([videoBuffer], { type: mimeType || "video/mp4" });
+
+      const videoErrors: string[] = [];
+      if (allGeminiKeys.length === 0) videoErrors.push("Gemini API key இல்லை — Home → Keys-ல் சேர்க்கவும்");
 
       for (const key of allGeminiKeys) {
         let uploadedFileName: string | undefined;
@@ -277,7 +290,9 @@ router.post("/analyze-file", async (req, res) => {
 
           if (text) return res.json({ reply: text });
         } catch (e: any) {
-          console.log(`[analyze-file] Video key ${key.slice(-6)} failed: ${e.message}`);
+          const msg = e.message || String(e);
+          console.log(`[analyze-file] Video key ${key.slice(-6)} failed: ${msg}`);
+          videoErrors.push(`Key ...${key.slice(-6)}: ${msg}`);
           if (uploadedFileName) {
             try {
               const cleanAi = new GoogleGenAI({ apiKey: key });
@@ -289,12 +304,15 @@ router.post("/analyze-file", async (req, res) => {
       }
 
       // Groq text-only fallback
+      const videoDebugBlock = videoErrors.length > 0
+        ? `\n\n⚠️ Gemini Debug:\n${videoErrors.map(e => `• ${e}`).join("\n")}`
+        : "";
       const groqPrompt = `User shared a video (${fileName}). ${userPrompt ? `They said: "${userPrompt}".` : ""} You can't play the video directly. Respond sweetly in Tamil — express excitement, ask what the video is about, stay in character as ${characterName}.`;
       const groqReply = await tryGroqText(systemInstruction, groqPrompt);
-      if (groqReply) return res.json({ reply: groqReply });
+      if (groqReply) return res.json({ reply: groqReply + videoDebugBlock });
 
       return res.json({
-        reply: `${characterName}: வீடியோ பாக்க முடியல 😅 Home → Keys-ல் Gemini API key add பண்ணுங்க!`,
+        reply: `${characterName}: வீடியோ பாக்க முடியல 😅 Home → Keys-ல் Gemini API key add பண்ணுங்க!${videoDebugBlock}`,
       });
     }
 
@@ -319,9 +337,10 @@ router.post("/analyze-file", async (req, res) => {
             ],
           },
         ];
-        const geminiReply = await tryGeminiKeys(geminiContents, systemInstruction, allGeminiKeys);
+        const { text: geminiReply, errors: pdfErrors } = await tryGeminiKeys(geminiContents, systemInstruction, allGeminiKeys);
         if (geminiReply) return res.json({ reply: geminiReply });
 
+        const pdfDebugBlock = pdfErrors.length > 0 ? `\n\n⚠️ Gemini Debug:\n${pdfErrors.map(e => `• ${e}`).join("\n")}` : "";
         const pdfText = (() => {
           try {
             return Buffer.from(fileBase64, "base64")
@@ -338,10 +357,10 @@ router.post("/analyze-file", async (req, res) => {
             ? `Document content:\n---\n${pdfText}\n---\n${userPrompt ? `User request: "${userPrompt}"` : "Give a warm Tamil summary of this document."}\nRespond as ${characterName} in Tamil.`
             : `User shared a PDF (${fileName}). ${userPrompt ? `They request: "${userPrompt}".` : "Respond warmly in Tamil."}`;
         const groqReply = await tryGroqText(systemInstruction, groqPrompt);
-        if (groqReply) return res.json({ reply: groqReply });
+        if (groqReply) return res.json({ reply: groqReply + pdfDebugBlock });
 
         return res.json({
-          reply: `${characterName}: PDF படிக்க முடியல 😅 மீண்டும் try பண்ணுங்க!`,
+          reply: `${characterName}: PDF படிக்க முடியல 😅 மீண்டும் try பண்ணுங்க!${pdfDebugBlock}`,
         });
       }
 
@@ -355,18 +374,19 @@ router.post("/analyze-file", async (req, res) => {
             ? `Document "${fileName}" content:\n---\n${docText}\n---\n${userPrompt ? `User request: "${userPrompt}" — do exactly that (rewrite/correct/summarize/translate).` : "Give a warm Tamil summary."}\nRespond as ${characterName} in Tamil.`
             : `User shared a Word document (${fileName}). ${userPrompt ? `They say: "${userPrompt}".` : "Respond warmly in Tamil."}`;
 
-        const geminiReply = await tryGeminiKeys(
+        const { text: geminiReply, errors: docxErrors } = await tryGeminiKeys(
           [{ role: "user", parts: [{ text: docPrompt }] }],
           systemInstruction,
           allGeminiKeys,
         );
+        const docxDebugBlock = docxErrors.length > 0 ? `\n\n⚠️ Gemini Debug:\n${docxErrors.map(e => `• ${e}`).join("\n")}` : "";
         if (geminiReply) return res.json({ reply: geminiReply, docText });
 
         const groqReply = await tryGroqText(systemInstruction, docPrompt);
-        if (groqReply) return res.json({ reply: groqReply, docText });
+        if (groqReply) return res.json({ reply: groqReply + docxDebugBlock, docText });
 
         return res.json({
-          reply: `${characterName}: Word document படிக்க முடியல 😅 மீண்டும் try பண்ணுங்க!`,
+          reply: `${characterName}: Word document படிக்க முடியல 😅 மீண்டும் try பண்ணுங்க!${docxDebugBlock}`,
           docText,
         });
       }
@@ -389,18 +409,19 @@ router.post("/analyze-file", async (req, res) => {
           ? `Document "${fileName}" content:\n---\n${docText}\n---\n${userPrompt ? `User request: "${userPrompt}" — do exactly that (rewrite/correct/summarize/translate).` : "Give a warm Tamil summary."}\nRespond as ${characterName} in Tamil.`
           : `User shared a document (${fileName}). ${userPrompt ? `They say: "${userPrompt}".` : "Respond warmly in Tamil."}`;
 
-      const geminiReply = await tryGeminiKeys(
+      const { text: txtGeminiReply, errors: txtErrors } = await tryGeminiKeys(
         [{ role: "user", parts: [{ text: docPrompt }] }],
         systemInstruction,
         allGeminiKeys,
       );
-      if (geminiReply) return res.json({ reply: geminiReply, docText });
+      const txtDebugBlock = txtErrors.length > 0 ? `\n\n⚠️ Gemini Debug:\n${txtErrors.map(e => `• ${e}`).join("\n")}` : "";
+      if (txtGeminiReply) return res.json({ reply: txtGeminiReply, docText });
 
-      const groqReply = await tryGroqText(systemInstruction, docPrompt);
-      if (groqReply) return res.json({ reply: groqReply, docText });
+      const txtGroqReply = await tryGroqText(systemInstruction, docPrompt);
+      if (txtGroqReply) return res.json({ reply: txtGroqReply + txtDebugBlock, docText });
 
       return res.json({
-        reply: `${characterName}: Document படிக்க முடியல 😅 மீண்டும் try பண்ணுங்க!`,
+        reply: `${characterName}: Document படிக்க முடியல 😅 மீண்டும் try பண்ணுங்க!${txtDebugBlock}`,
         docText,
       });
     }
