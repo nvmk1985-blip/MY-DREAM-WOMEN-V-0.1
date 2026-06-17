@@ -19,41 +19,97 @@ function cfgCloudinary() {
 
 // ── Gemini key rotation (Render env group "Multimedia" — keys 1–5) ───────────
 const GEMINI_KEY_NAMES = [
-  "GEMINI_API_KEY_1",
-  "GEMINI_API_KEY_2",
-  "GEMINI_API_KEY_3",
-  "GEMINI_API_KEY_4",
-  "GEMINI_API_KEY_5",
-  // fallbacks for local dev / other setups
-  "GEMINI_API_KEY",
-  "GEMINI_API_KEY_CLOUDNARY",
-  "AI_INTEGRATIONS_GEMINI_API_KEY",
+  "GEMINI_API_KEY_1", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3",
+  "GEMINI_API_KEY_4", "GEMINI_API_KEY_5",
+  "GEMINI_API_KEY", "GEMINI_API_KEY_CLOUDNARY", "AI_INTEGRATIONS_GEMINI_API_KEY",
 ];
 
 function getGeminiKeys(): string[] {
-  return GEMINI_KEY_NAMES
-    .map((k) => process.env[k] ?? "")
-    .filter(Boolean)
-    .map((k) => k.trim());
+  return GEMINI_KEY_NAMES.map((k) => process.env[k] ?? "").filter(Boolean).map((k) => k.trim());
 }
 
-async function generateWithRotation(
-  fn: (key: string) => Promise<string>,
+function getGroqKey(): string | undefined {
+  return (process.env["GROQ_KEY"] || process.env["GROQ_API_KEY"] || "").trim() || undefined;
+}
+
+function is429(err: any): boolean {
+  return (
+    err?.status === 429 ||
+    String(err?.message ?? "").includes("429") ||
+    String(err?.message ?? "").includes("quota") ||
+    String(err?.message ?? "").includes("RESOURCE_EXHAUSTED")
+  );
+}
+
+// ── Groq vision fallback (llama-3.2-90b-vision) ──────────────────────────────
+async function generateWithGroq(
+  b64: string,
+  mimeType: string,
+  userText: string,
+  systemInstruction: string,
 ): Promise<string> {
-  const keys = getGeminiKeys();
-  if (keys.length === 0) throw new Error("No Gemini API key found");
+  const key = getGroqKey();
+  if (!key) throw new Error("No GROQ_KEY set");
+
+  const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      model: "meta-llama/llama-4-scout-17b-16e-instruct",
+      messages: [
+        { role: "system", content: systemInstruction },
+        {
+          role: "user",
+          content: [
+            { type: "image_url", image_url: { url: `data:${mimeType};base64,${b64}` } },
+            { type: "text", text: userText },
+          ],
+        },
+      ],
+      max_tokens: 512,
+      temperature: 0.9,
+    }),
+  });
+
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`Groq error ${resp.status}: ${err.slice(0, 200)}`);
+  }
+  const json: any = await resp.json();
+  return (json.choices?.[0]?.message?.content ?? "").trim() || "பதில் வரல 😅";
+}
+
+// ── Gemini + Groq cascading generate (image only) ────────────────────────────
+async function generateImageReply(
+  b64: string,
+  mimeType: string,
+  userText: string,
+  systemInstruction: string,
+): Promise<string> {
+  const geminiKeys = getGeminiKeys();
   let lastErr: unknown;
-  for (const key of keys) {
+
+  for (const apiKey of geminiKeys) {
     try {
-      return await fn(key);
+      const ai   = new GoogleGenAI({ apiKey });
+      const resp = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: [{ role: "user", parts: [{ inlineData: { data: b64, mimeType } }, { text: userText }] }],
+        config: { systemInstruction, safetySettings: LAX_SAFETY as any },
+      });
+      return (resp.text || "").trim() || "பதில் வரல 😅";
     } catch (err: any) {
-      const is429 = err?.status === 429 || String(err?.message ?? "").includes("429") ||
-        String(err?.message ?? "").includes("quota") || String(err?.message ?? "").includes("RESOURCE_EXHAUSTED");
       lastErr = err;
-      if (!is429) throw err;
+      if (!is429(err)) throw err;
     }
   }
-  throw lastErr;
+
+  // All Gemini keys quota-exhausted → try Groq
+  try {
+    return await generateWithGroq(b64, mimeType, userText, systemInstruction);
+  } catch (groqErr: any) {
+    throw lastErr ?? groqErr;
+  }
 }
 
 // ── Lax safety settings ──────────────────────────────────────────────────────
@@ -85,11 +141,12 @@ async function uploadBufferToCloudinary(
 // ── GET /api/media-chat/ping — health check ───────────────────────────────────
 router.get("/media-chat/ping", async (_req, res: any) => {
   try {
-    const cl       = cfgCloudinary();
-    const ping     = await cl.api.ping();
+    const cl        = cfgCloudinary();
+    const ping      = await cl.api.ping();
     const cloudName = (process.env["CLOUDNARY_USER_NAME"] ?? process.env["CLOUDINARY_CLOUD_NAME"] ?? "").slice(0, 6) + "***";
     const keyCount  = getGeminiKeys().length;
-    return res.json({ ok: true, ping, cloudName, geminiKeys: keyCount });
+    const hasGroq   = !!getGroqKey();
+    return res.json({ ok: true, ping, cloudName, geminiKeys: keyCount, groq: hasGroq });
   } catch (err: any) {
     return res.status(500).json({ ok: false, error: err?.message, http_code: err?.http_code });
   }
@@ -114,7 +171,7 @@ router.post(
       // ── 1. Cloudinary upload ───────────────────────────────────────────────
       const { secure_url: mediaUrl } = await uploadBufferToCloudinary(file.buffer, mimeType);
 
-      // ── 2. Tamil romantic persona system instruction ───────────────────────
+      // ── 2. Tamil romantic persona ──────────────────────────────────────────
       const systemInstruction = `நீ ${persona} — user-ஓட romantic partner.
 Image-ல என்ன நடக்குது, எப்படி இருக்காங்க என்று பாத்து, அன்போட, affectionate-ஆ தமிழில் reply பண்ணு.
 Spoken Tamil (பேச்சு வழக்கு) மட்டும் use பண்ணு — formal இல்ல.
@@ -125,49 +182,51 @@ AI, assistant, model என்று ஒருபோதும் சொல்ல
         ? `இந்த ${isVideo ? "video" : "photo"}-ல நாங்க இப்படி இருக்கோம். ${caption}`
         : `இந்த ${isVideo ? "video" : "photo"} பாரு — என்னன்னு சொல்லு!`;
 
-      // ── 3. Gemini multimodal (with key rotation) ──────────────────────────
+      // ── 3. AI response (Gemini → Groq fallback for images; Gemini only for video) ──
       let aiResponse: string;
 
       if (isVideo) {
-        aiResponse = await generateWithRotation(async (apiKey) => {
-          const ai = new GoogleGenAI({ apiKey });
-          const videoBlob = new Blob([file.buffer], { type: mimeType });
-          const uploadResult: any = await (ai.files as any).upload({
-            file: videoBlob,
-            config: { mimeType, displayName: file.originalname || "video" },
-          });
-
-          const deadline = Date.now() + 120_000;
-          let fileUri = "";
-          while (Date.now() < deadline) {
-            const info: any = await (ai.files as any).get({ name: uploadResult.name });
-            if (info.state === "ACTIVE") { fileUri = info.uri ?? info.fileUri ?? ""; break; }
-            if (info.state === "FAILED") throw new Error("Gemini File API: upload FAILED");
-            await new Promise((r) => setTimeout(r, 4000));
+        // Video: Gemini File API (no Groq fallback — Groq doesn't support video)
+        let lastErr: unknown;
+        const geminiKeys = getGeminiKeys();
+        let done = false;
+        for (const apiKey of geminiKeys) {
+          try {
+            const ai = new GoogleGenAI({ apiKey });
+            const videoBlob = new Blob([file.buffer], { type: mimeType });
+            const uploadResult: any = await (ai.files as any).upload({
+              file: videoBlob,
+              config: { mimeType, displayName: file.originalname || "video" },
+            });
+            const deadline = Date.now() + 120_000;
+            let fileUri = "";
+            while (Date.now() < deadline) {
+              const info: any = await (ai.files as any).get({ name: uploadResult.name });
+              if (info.state === "ACTIVE") { fileUri = info.uri ?? info.fileUri ?? ""; break; }
+              if (info.state === "FAILED") throw new Error("Gemini File API: upload FAILED");
+              await new Promise((r) => setTimeout(r, 4000));
+            }
+            if (!fileUri) throw new Error("Gemini File API: ACTIVE state timeout");
+            const resp = await ai.models.generateContent({
+              model: "gemini-2.0-flash",
+              contents: [{ role: "user", parts: [{ fileData: { fileUri, mimeType } }, { text: userText }] }],
+              config: { systemInstruction, safetySettings: LAX_SAFETY as any },
+            });
+            await (ai.files as any).delete({ name: uploadResult.name }).catch(() => {});
+            aiResponse = (resp.text || "").trim() || "பதில் வரல 😅";
+            done = true;
+            break;
+          } catch (err: any) {
+            lastErr = err;
+            if (!is429(err)) throw err;
           }
-          if (!fileUri) throw new Error("Gemini File API: ACTIVE state timeout");
-
-          const resp = await ai.models.generateContent({
-            model: "gemini-2.0-flash",
-            contents: [{ role: "user", parts: [{ fileData: { fileUri, mimeType } }, { text: userText }] }],
-            config: { systemInstruction, safetySettings: LAX_SAFETY as any },
-          });
-
-          await (ai.files as any).delete({ name: uploadResult.name }).catch(() => {});
-          return (resp.text || "").trim() || "பதில் வரல 😅";
-        });
+        }
+        if (!done) throw lastErr ?? new Error("All Gemini keys quota exceeded for video");
 
       } else {
+        // Image: Gemini → Groq cascade
         const b64 = file.buffer.toString("base64");
-        aiResponse = await generateWithRotation(async (apiKey) => {
-          const ai   = new GoogleGenAI({ apiKey });
-          const resp = await ai.models.generateContent({
-            model: "gemini-2.0-flash",
-            contents: [{ role: "user", parts: [{ inlineData: { data: b64, mimeType } }, { text: userText }] }],
-            config: { systemInstruction, safetySettings: LAX_SAFETY as any },
-          });
-          return (resp.text || "").trim() || "பதில் வரல 😅";
-        });
+        aiResponse = await generateImageReply(b64, mimeType, userText, systemInstruction);
       }
 
       // ── 4. Return ─────────────────────────────────────────────────────────
