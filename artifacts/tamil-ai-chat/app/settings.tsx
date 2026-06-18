@@ -57,6 +57,8 @@ export default function SettingsScreen() {
         if (parsed['huggingface']) setHfSaved(true);
       }
     }).catch(() => {});
+    // Auto-load server defaults (GitHub token + HuggingFace token)
+    loadServerDefaults();
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
@@ -68,6 +70,23 @@ export default function SettingsScreen() {
       const parsed: Record<string, string> = JSON.parse(saved);
       return parsed['github'] || null;
     } catch { return null; }
+  };
+
+  // Server defaults-ஐ auto-load பண்றோம் — GitHub token + HuggingFace token
+  const loadServerDefaults = async () => {
+    try {
+      const res = await fetch(`${DEFAULT_SERVER}/api/app-config`);
+      if (!res.ok) return;
+      const cfg = await res.json() as { githubToken?: string | null; hfToken?: string | null };
+      const raw = await AsyncStorage.getItem(KEYS_STORAGE).catch(() => null);
+      const parsed: Record<string, string> = raw ? JSON.parse(raw) : {};
+      let changed = false;
+      if (cfg.githubToken && !parsed['github']) { parsed['github'] = cfg.githubToken; changed = true; }
+      if (cfg.hfToken && !parsed['huggingface']) { parsed['huggingface'] = cfg.hfToken; setHfSaved(true); changed = true; }
+      if (changed) await AsyncStorage.setItem(KEYS_STORAGE, JSON.stringify(parsed));
+    } catch {
+      // Server offline — skip defaults
+    }
   };
 
   // Latest APK URL — no auth needed (public repo releases)
