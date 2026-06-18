@@ -9,6 +9,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { sendMessage, sendToLocalGemma, Message, generateImage, generateImageHuggingFace, listCloudinaryImages, listCloudinaryVideos, analyzeFile, uploadUriToCloudinary } from '../services/api';
+import MediaImageViewer from '../components/MediaImageViewer';
+import MediaVideoPlayer from '../components/MediaVideoPlayer';
+
+function cloudVideoThumbnail(videoUrl: string): string {
+  try {
+    return videoUrl
+      .replace('/video/upload/', '/video/upload/so_0,w_400,h_225,c_fill,f_jpg/')
+      .replace(/\.(mp4|mov|avi|mkv|webm|m4v)(\?.*)?$/, '.jpg');
+  } catch { return ''; }
+}
 
 // Per-style photo cache helpers — same key as ai-girls-cloud.tsx uses
 const stylePhotoCacheKey = (personaId: string, styleId: string) =>
@@ -443,6 +453,7 @@ Each label: 1 sentence max.`;
   const [generatingPhoto, setGeneratingPhoto] = useState(false);
   const [videoLoading, setVideoLoading] = React.useState(false);
   const [fullViewImg, setFullViewImg] = useState<string | null>(null);
+  const [fullViewVideo, setFullViewVideo] = useState<string | null>(null);
 
   // Cloud photo browser (full-screen)
   const [showCloudBrowser, setShowCloudBrowser] = useState(false);
@@ -1706,15 +1717,33 @@ Each label: 1 sentence max.`;
             </View>
           ) : item.sentMediaType === 'video' ? (
             <View>
-              <View style={{ width: 200, height: 120, backgroundColor: '#0d0d0d', borderRadius: 12, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#444' }}>
-                <Text style={{ fontSize: 40 }}>🎬</Text>
-                <Text style={{ color: '#bbb', fontSize: 11, marginTop: 6, fontWeight: '600' }}>Video Sent</Text>
-              </View>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => item.sentMediaUri && setFullViewVideo(item.sentMediaUri)}
+                style={{ width: 210, height: 128, borderRadius: 12, overflow: 'hidden', backgroundColor: '#0d0d0d', borderWidth: 1, borderColor: '#444' }}
+              >
+                {item.sentMediaUri ? (
+                  <Image
+                    source={{ uri: cloudVideoThumbnail(item.sentMediaUri) }}
+                    style={{ width: '100%', height: '100%' }}
+                    resizeMode="cover"
+                    defaultSource={require('../assets/images/icon.png')}
+                  />
+                ) : null}
+                <View style={{ ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.38)' }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(233,30,140,0.85)', justifyContent: 'center', alignItems: 'center' }}>
+                    <Text style={{ color: '#fff', fontSize: 18, marginLeft: 3 }}>▶</Text>
+                  </View>
+                  <Text style={{ color: '#fff', fontSize: 10, marginTop: 6, fontWeight: '600', opacity: 0.9 }}>🎬 Video</Text>
+                </View>
+              </TouchableOpacity>
               <Text selectable style={[styles.msgText, { color: msgTextColor, marginTop: 6 }]}>{item.content}</Text>
             </View>
           ) : item.sentMediaType === 'image' && item.sentMediaUri ? (
             <View>
-              <Image source={{ uri: item.sentMediaUri }} style={{ width: 200, height: 200, borderRadius: 10 }} resizeMode="cover" />
+              <TouchableOpacity activeOpacity={0.88} onPress={() => setFullViewImg(item.sentMediaUri!)}>
+                <Image source={{ uri: item.sentMediaUri }} style={{ width: 200, height: 200, borderRadius: 10 }} resizeMode="cover" />
+              </TouchableOpacity>
               <Text selectable style={[styles.msgText, { color: msgTextColor, marginTop: 4 }]}>{item.content}</Text>
             </View>
           ) : (
@@ -1723,11 +1752,22 @@ Each label: 1 sentence max.`;
           {item.videoUrl && (
             <View style={{ marginBottom: 6 }}>
               <TouchableOpacity
-                style={{ width: 220, height: 140, backgroundColor: '#1a1a2e', borderRadius: 10, justifyContent: 'center', alignItems: 'center', overflow: 'hidden', borderWidth: 2, borderColor: '#6C63FF' }}
-                onPress={() => { const { Linking } = require('react-native'); Linking.openURL(item.videoUrl!); }}
+                activeOpacity={0.85}
+                style={{ width: 230, height: 142, borderRadius: 12, overflow: 'hidden', backgroundColor: '#1a1a2e', borderWidth: 2, borderColor: '#6C63FF' }}
+                onPress={() => setFullViewVideo(item.videoUrl!)}
               >
-                <Text style={{ fontSize: 48 }}>▶️</Text>
-                <Text style={{ color: '#aaa', fontSize: 11, marginTop: 6 }}>🎬 Tap to play video</Text>
+                <Image
+                  source={{ uri: cloudVideoThumbnail(item.videoUrl) }}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode="cover"
+                  defaultSource={require('../assets/images/icon.png')}
+                />
+                <View style={{ ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }}>
+                  <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(108,99,255,0.88)', justifyContent: 'center', alignItems: 'center' }}>
+                    <Text style={{ color: '#fff', fontSize: 22, marginLeft: 4 }}>▶</Text>
+                  </View>
+                  <Text style={{ color: '#ddd', fontSize: 11, marginTop: 8, fontWeight: '600' }}>🎬 Tap to play</Text>
+                </View>
               </TouchableOpacity>
               <TouchableOpacity
                 style={{ marginTop: 4, backgroundColor: 'rgba(198,40,40,0.12)', borderRadius: 8, paddingVertical: 5, paddingHorizontal: 10, alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', gap: 4 }}
@@ -2191,19 +2231,11 @@ Each label: 1 sentence max.`;
         </View>
       </Modal>
 
-      <Modal visible={!!fullViewImg} transparent={false} animationType="fade" onRequestClose={() => setFullViewImg(null)}>
-        <View style={styles.viewerBg}>
-          <TouchableOpacity style={styles.viewerClose} onPress={() => setFullViewImg(null)}>
-            <Text style={styles.viewerCloseText}>✕</Text>
-          </TouchableOpacity>
-          {fullViewImg && <Image source={{ uri: fullViewImg }} style={styles.viewerImg} resizeMode="contain" />}
-          {fullViewImg && (
-            <TouchableOpacity style={styles.viewerPromptBtn} onPress={() => getPrompt(fullViewImg)}>
-              <Text style={styles.viewerPromptTxt}>📋 Prompt எடு</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </Modal>
+      <MediaImageViewer
+        uri={fullViewImg}
+        onClose={() => setFullViewImg(null)}
+        onPrompt={(u) => { setFullViewImg(null); getPrompt(u); }}
+      />
 
       {/* ── Image → Prompt Result Modal ── */}
       <Modal visible={showPromptModal} transparent animationType="slide" onRequestClose={() => setShowPromptModal(false)}>
@@ -2615,6 +2647,11 @@ Each label: 1 sentence max.`;
           </View>
         </View>
       </Modal>
+
+      <MediaVideoPlayer
+        uri={fullViewVideo}
+        onClose={() => setFullViewVideo(null)}
+      />
 
     </SafeAreaView>
   );
