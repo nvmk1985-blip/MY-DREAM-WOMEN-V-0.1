@@ -273,6 +273,7 @@ export default function ChatScreen() {
         setUserBodyDesc(data.userBodyDesc ?? '');
         setAvatarReflectionEnabled(data.avatarReflectionEnabled !== false);
         setAvatarReflectionPrompt(data.avatarReflectionPrompt ?? '');
+        setImageVideoSystemPrompt(data.imageVideoPrompt ?? '');
       } else {
         setPersona(base);
         setAvatarUri(base.avatarPhotoUri);
@@ -469,6 +470,7 @@ Each label: 1 sentence max.`;
   const [userBodyDesc, setUserBodyDesc] = useState('');
   const [avatarReflectionEnabled, setAvatarReflectionEnabled] = useState(true);
   const [avatarReflectionPrompt, setAvatarReflectionPrompt] = useState('');
+  const [imageVideoSystemPrompt, setImageVideoSystemPrompt] = useState('');
   const [avatarDescriptions, setAvatarDescriptions] = useState<{main?: string; normal?: string; presana?: string; user?: string; userNormal?: string; userPrasana?: string}>({});
 
   // ── Chat Style (wallpaper + bubble) ──
@@ -1110,6 +1112,7 @@ Each label: 1 sentence max.`;
         userPrompt: caption || undefined,
         characterName: persona.name,
         characterPrompt: persona.prompt,
+        imageVideoSystemPrompt: imageVideoSystemPrompt || undefined,
       });
       setMessages(prev => [...prev, {
         id: (Date.now()+1).toString(), role: 'assistant',
