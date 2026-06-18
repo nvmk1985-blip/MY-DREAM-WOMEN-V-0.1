@@ -2580,7 +2580,11 @@ Each label: 1 sentence max.`;
         animationType="slide"
         onRequestClose={() => { setStagingMedia(null); setStagingCaption(''); }}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' }}
+          keyboardVerticalOffset={0}
+        >
           <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 32 }}>
             {/* Header */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' }}>
@@ -2645,7 +2649,7 @@ Each label: 1 sentence max.`;
               </Text>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <MediaVideoPlayer
