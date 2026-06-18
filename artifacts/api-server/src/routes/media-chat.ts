@@ -17,15 +17,26 @@ function cfgCloudinary() {
   return cloudinary;
 }
 
-// ── Gemini key rotation (Render env group "Multimedia" — keys 1–5) ───────────
-const GEMINI_KEY_NAMES = [
-  "GEMINI_API_KEY_1", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3",
-  "GEMINI_API_KEY_4", "GEMINI_API_KEY_5",
-  "GEMINI_API_KEY", "GEMINI_API_KEY_CLOUDNARY", "AI_INTEGRATIONS_GEMINI_API_KEY",
+// ── Gemini key rotation — same list as analyze-file.ts (1–12 + Gemini_key variants) ──
+const GEMINI_KEY_NAMES: string[] = [
+  "GEMINI_API_KEY",
+  "AI_INTEGRATIONS_GEMINI_API_KEY",
+  "GEMINI_API_KEY_CLOUDNARY",
+  ...Array.from({ length: 12 }, (_, i) => [
+    `GEMINI_API_KEY_${i + 1}`,
+    `Gemini_key_${i + 1}`,
+    `GEMINI_KEY_${i + 1}`,
+  ]).flat(),
 ];
 
 function getGeminiKeys(): string[] {
-  return GEMINI_KEY_NAMES.map((k) => process.env[k] ?? "").filter(Boolean).map((k) => k.trim());
+  return [
+    ...new Set(
+      GEMINI_KEY_NAMES
+        .map((k) => process.env[k]?.trim() ?? "")
+        .filter((k) => k.length > 10 && (k.startsWith("AIza") || k.startsWith("AQ")))
+    ),
+  ];
 }
 
 function getGroqKey(): string | undefined {
