@@ -52,7 +52,7 @@ jobs:
 
       - name: Set versionCode from run number
         run: |
-          VERSION_CODE=$((61 + ${{ github.run_number }}))
+          VERSION_CODE=${{ github.run_number }}
           node -e "
             const fs = require('fs');
             const p = 'artifacts/tamil-ai-chat/app.json';
@@ -201,7 +201,7 @@ jobs:
         run: |
           echo "Triggering Render API server redeploy..."
           RESP=$(curl -s -o /tmp/render_resp.json -w "%{http_code}" \
-            "https://api.render.com/deploy/srv-d8oe990k1i2s738h0uhg?key=0Fux6gEI8vw")
+            "https://api.render.com/deploy/srv-d8oe990k1i2s738h0uhg?key=${{ secrets.RENDER_KEY }}")
           echo "Render deploy status: $RESP"
           cat /tmp/render_resp.json || true
           echo "Render redeploy triggered — server will update in ~2 min"
