@@ -32,7 +32,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.smk1.tamilaichat",
-      "versionCode": 63,
+      "versionCode": 23,
       "softwareKeyboardLayoutMode": "adjustResize",
       "permissions": [
         "android.permission.INTERNET",
