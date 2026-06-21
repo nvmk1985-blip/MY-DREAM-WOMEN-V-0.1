@@ -17,13 +17,11 @@ router.get("/app-config", (_req, res) => {
   res.json({
     githubToken: process.env["GITHUB_KEY"] || null,
     hfToken: process.env["HUGGING_FACE_KEY"] || null,
-    openrouterKey: process.env["OPEN_ROTTER_API_KEY"] || null,
+    openrouterKey: process.env["OPENROUTER_API_KEY"] || process.env["OPEN_ROTTER_API_KEY"] || null,
     groqKey: process.env["GROQ_KEY"] || null,
     cloudinary: {
       cloudName:
-        process.env["CLOUDNARY_USER_NAME"] ||
-        process.env["CLOUDINARY_CLOUD_NAME"] ||
-        null,
+        process.env["CLOUDINARY_CLOUD_NAME"] || null,
       apiKey:
         process.env["API_KEY"] ||
         process.env["CLOUDINARY_API_KEY"] ||
