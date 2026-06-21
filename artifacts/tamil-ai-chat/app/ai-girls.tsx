@@ -961,7 +961,7 @@ Then write these prompts:
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
           <View style={s.buildBadge}>
             <Text style={s.buildBadgeTxt}>
-              v{Constants.expoConfig?.version ?? '1.0'} ({Constants.expoConfig?.android?.versionCode ?? ''})
+              v{Constants.expoConfig?.version ?? '1.0'} ({process.env.EXPO_PUBLIC_BUILD_NUMBER ?? Constants.expoConfig?.android?.versionCode ?? ''})
             </Text>
           </View>
           <View style={[s.statusPill, isOnline ? s.statusOnline : s.statusOffline]}>
