@@ -34,6 +34,7 @@ const DEFAULT_KEYS: Omit<ApiKeyEntry, 'value' | 'expanded' | 'status'>[] = [
   { id: 'cloudinary_api_secret', label: 'Cloudinary API Secret', site: 'cloudinary.com', enabled: false },
   { id: 'hf',         label: 'HuggingFace',  site: 'huggingface.co',    enabled: false },
   { id: 'openrouter',  label: 'OpenRouter API', site: 'openrouter.ai',   enabled: false },
+  { id: 'groq',         label: 'Groq AI',         site: 'groq.com',          enabled: false },
   { id: 'img_prompt_gemini', label: '📸 Image to Prompt', site: 'aistudio.google.com', enabled: false },
 ];
 
@@ -391,6 +392,7 @@ export default function KeysScreen() {
         githubToken?: string | null; hfToken?: string | null;
         openrouterKey?: string | null;
         cloudinary?: { cloudName?: string | null; apiKey?: string | null; apiSecret?: string | null };
+        groqKey?: string | null;
         geminiKeys?: string[];
       };
       const savedRaw = await AsyncStorage.getItem(KEYS_STORAGE);
@@ -406,12 +408,14 @@ export default function KeysScreen() {
           if (k && !parsed[id]) { parsed[id] = k; enabledMap[id] = true; filled++; }
         }
       }
+      // Server values always overwrite — Render-ல் set ஆனது தான் correct value
       const fill = (id: string, val: string | null | undefined) => {
-        if (val && !parsed[id]) { parsed[id] = val; enabledMap[id] = true; filled++; }
+        if (val) { parsed[id] = val; enabledMap[id] = true; filled++; }
       };
       fill('github', cfg.githubToken);
       fill('hf', cfg.hfToken);
       fill('openrouter', cfg.openrouterKey);
+      fill('groq', cfg.groqKey);
       fill('cloudinary', cfg.cloudinary?.cloudName);
       fill('cloudinary_api_key', cfg.cloudinary?.apiKey);
       fill('cloudinary_api_secret', cfg.cloudinary?.apiSecret);
