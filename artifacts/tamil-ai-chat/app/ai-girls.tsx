@@ -9,6 +9,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { ALL_PERSONAS, Persona } from '../constants/personas';
 import { ParamsStore } from '../context/params-store';
 import { isModelCached, isWebGPUSupported } from '../services/webllm';
@@ -958,9 +959,10 @@ Then write these prompts:
           )}
         </TouchableOpacity>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-          <Text style={s.headerTitle}>My AI Girls</Text>
           <View style={s.buildBadge}>
-            <Text style={s.buildBadgeTxt}>v61</Text>
+            <Text style={s.buildBadgeTxt}>
+              v{Constants.expoConfig?.version ?? '1.0'} ({Constants.expoConfig?.android?.versionCode ?? ''})
+            </Text>
           </View>
           <View style={[s.statusPill, isOnline ? s.statusOnline : s.statusOffline]}>
             <Text style={s.statusPillTxt}>{isOnline ? '🌐 Online' : '📡 Offline'}</Text>
