@@ -1239,6 +1239,9 @@ Each label: 1 sentence max.`;
         ? `\n\n**User பத்தி தகவல்:**${userName ? ` User பெயர் "${userName}".` : ''}${userBehaviour ? ` Personality: ${userBehaviour}` : ''}${modeUserBeh ? `\nஇந்த mode-ல் User எப்படி பேசுவாரு: ${modeUserBeh}` : ''}${userBodyDesc ? `\nUser-ஓட தோற்றம்/உருவம்: ${userBodyDesc}` : ''} — இதை மனசுல வச்சு respond பண்ணு.`
         : '';
 
+
+      // ── Identity rule: user is always the user, never another character ──
+      const identityContext = `\n\n**[Identity Rule — ALWAYS FOLLOW]:** உன்னிடம் chat பண்றவர் USER மட்டும். User ஒரு character-ஓட பெயரை சொன்னால் (உதா: "கிருத்திகா சொன்னாள்", "ப்ரியா கேட்கிறாள்"), அது USER அந்த character பத்தி பேசுகிறார் — அந்த character பேசுவதில்லை. USER message எப்பவும் USER மட்டுமே அனுப்புவார் — வேற character-ஆ நினைக்காதே. இதை எப்பவும் மனசுல வச்சு respond பண்ணு.`;
       // ── Image 1: main character photo + rules (ALWAYS included) ──
       // ── Image 2: normalAvatarUri (normal mode photo) ──
       // ── Image 3: presanaAvatarUri (presana mode photo) ──
@@ -1323,7 +1326,7 @@ Each label: 1 sentence max.`;
         ? `\n\n**[User-ஓட personal details — எப்பவும் நினைவில் வச்சு பேசு]:**\n${kiruthikaUserDetails.trim()}`
         : '';
       const effectivePrompt = persona?.prompt
-        ? persona.prompt + charContext + getFamilyContext(persona.id) + imageContext + moodOverride + dialectOverride + userContext + avatarContext + kiruthikaContext
+        ? persona.prompt + charContext + getFamilyContext(persona.id) + imageContext + moodOverride + dialectOverride + userContext + identityContext + avatarContext + kiruthikaContext
         : persona?.prompt;
 
       let reply: string;
