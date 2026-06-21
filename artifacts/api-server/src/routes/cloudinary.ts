@@ -5,9 +5,9 @@ const router = Router();
 
 function cfg() {
   cloudinary.config({
-    cloud_name: process.env["CLOUDINARY_CLOUD_NAME"] || process.env["CLOUDNARY_USER_NAME"],
-    api_key:    process.env["API_KEY"] || process.env["CLOUDINARY_API_KEY"],
-    api_secret: process.env["API_SECRET"] || process.env["CLOUDINARY_API_SECRET"],
+    cloud_name: process.env["CLOUDINARY_CLOUD_NAME"],
+    api_key:    process.env["API_KEY"],
+    api_secret: process.env["API_SECRET"],
   });
   return cloudinary;
 }
@@ -45,7 +45,7 @@ ensurePreset().catch(() => {/* silent */});
 router.get("/cloudinary/config", async (_req, res) => {
   await ensurePreset();
   res.json({
-    cloudName: process.env["CLOUDINARY_CLOUD_NAME"] || process.env["CLOUDNARY_USER_NAME"],
+    cloudName: process.env["CLOUDINARY_CLOUD_NAME"],
     uploadPreset: PRESET_NAME,
   });
 });
