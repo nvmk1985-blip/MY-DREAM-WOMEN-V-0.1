@@ -435,6 +435,29 @@ export default function KeysScreen() {
     setSyncing(false);
   };
 
+  // Cloudinary keys-ஐ அழித்து server-இல் இருந்து மீண்டும் load செய்
+  const forceReloadCloudinary = async () => {
+    setSyncing(true);
+    try {
+      const saved = await AsyncStorage.getItem(KEYS_STORAGE);
+      const parsed = saved ? JSON.parse(saved) : {};
+      delete parsed['cloudinary'];
+      delete parsed['cloudinary_api_key'];
+      delete parsed['cloudinary_api_secret'];
+      await AsyncStorage.setItem(KEYS_STORAGE, JSON.stringify(parsed));
+      setKeys(prev => prev.map(k =>
+        ['cloudinary', 'cloudinary_api_key', 'cloudinary_api_secret'].includes(k.id)
+          ? { ...k, value: '', status: 'idle' as KeyStatus }
+          : k
+      ));
+      await loadServerDefaults(false);
+    } catch {
+      Alert.alert('Error', 'Force reload fail');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <SafeAreaView style={s.safe}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -502,6 +525,17 @@ export default function KeysScreen() {
             <TouchableOpacity style={s.cloudSaveBtn} onPress={cloudSave} disabled={syncing}>
               {syncing ? <ActivityIndicator color="#fff" size="small" /> : <Text style={s.cloudBtnTxt}>☁️ Cloud Save</Text>}
             </TouchableOpacity>
+          </View>
+          <TouchableOpacity
+            style={[s.cloudLoadBtn, { marginTop: 8, backgroundColor: '#7c3aed' }]}
+            onPress={forceReloadCloudinary}
+            disabled={syncing}
+          >
+            {syncing
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <Text style={s.cloudBtnTxt}>🔄 Force Reload Cloudinary</Text>}
+          </TouchableOpacity>
+
           </View>
         </View>
 
