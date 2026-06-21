@@ -5,9 +5,9 @@ const router = Router();
 
 function cfg() {
   cloudinary.config({
-    cloud_name: process.env["CLOUDNARY_USER_NAME"]  || process.env["CLOUDINARY_CLOUD_NAME"],
-    api_key:    process.env["API_KEY"]              || process.env["CLOUDINARY_API_KEY"],
-    api_secret: process.env["API_SECRET"]           || process.env["CLOUDINARY_API_SECRET"],
+    cloud_name: process.env["CLOUDINARY_CLOUD_NAME"],
+    api_key:    process.env["API_KEY"] || process.env["CLOUDINARY_API_KEY"],
+    api_secret: process.env["API_SECRET"] || process.env["CLOUDINARY_API_SECRET"],
   });
   return cloudinary;
 }
@@ -18,8 +18,6 @@ let presetReady = false;
 async function ensurePreset() {
   if (presetReady) return;
   const cl = cfg();
-  // These options make public_id = "my-girls/priya/breast/<id>"
-  // so api.resources(prefix:) can find them in both Fixed & Dynamic folder modes
   const presetOpts = {
     unsigned: true,
     folder: "",
@@ -42,19 +40,16 @@ async function ensurePreset() {
   }
 }
 
-// Called on startup to ensure the preset exists
 ensurePreset().catch(() => {/* silent */});
 
-// Return the cloud config the client needs for direct upload
 router.get("/cloudinary/config", async (_req, res) => {
   await ensurePreset();
   res.json({
-    cloudName: process.env["CLOUDNARY_USER_NAME"] || process.env["CLOUDINARY_CLOUD_NAME"],
+    cloudName: process.env["CLOUDINARY_CLOUD_NAME"],
     uploadPreset: PRESET_NAME,
   });
 });
 
-// Fallback server-side upload (still kept, uses unsigned_upload)
 router.post("/cloudinary/upload", async (req, res) => {
   try {
     const { b64_json, mimeType = "image/jpeg", folder = "my-girls" } = req.body as {
@@ -82,7 +77,6 @@ router.get("/cloudinary/list", async (req, res) => {
     const cl = cfg();
     let resources: any[] = [];
 
-    // Method 1: Dynamic Folders mode (newer Cloudinary accounts)
     try {
       const r1 = await (cl.api as any).resources_by_asset_folder(folder, {
         max_results: 50,
@@ -91,7 +85,6 @@ router.get("/cloudinary/list", async (req, res) => {
       if (r1?.resources?.length) resources = r1.resources;
     } catch {}
 
-    // Method 2: Traditional prefix mode (older accounts)
     if (resources.length === 0) {
       try {
         const r2 = await cl.api.resources({
@@ -104,7 +97,6 @@ router.get("/cloudinary/list", async (req, res) => {
       } catch {}
     }
 
-    // Method 3: asset_folder query param
     if (resources.length === 0) {
       try {
         const r3 = await cl.api.resources({
@@ -127,11 +119,9 @@ router.get("/cloudinary/list", async (req, res) => {
   }
 });
 
-// Debug: list ALL images in my-girls root to find actual paths
 router.get("/cloudinary/debug-all", async (req, res) => {
   try {
     const cl = cfg();
-    // List all in my-girls recursively
     const result = await cl.api.resources({
       type: "upload",
       resource_type: "image",
@@ -162,7 +152,6 @@ router.delete("/cloudinary/delete", async (req, res) => {
     res.status(500).json({ error: err?.message || "Delete failed" });
   }
 });
-
 
 router.get("/cloudinary/videos", async (req, res) => {
   try {
@@ -196,8 +185,6 @@ router.get("/cloudinary/videos", async (req, res) => {
       } catch {}
     }
 
-    // Method 4: Broad parent-folder search + JS filter (handles Tamil/Unicode subfolder names)
-    // Cloudinary Admin API may fail for non-ASCII prefix queries; this sidesteps the issue.
     if (resources.length === 0) {
       try {
         const parentParts = folder.split("/");
@@ -208,7 +195,6 @@ router.get("/cloudinary/videos", async (req, res) => {
           prefix: parentFolder + "/", max_results: 300,
         });
         if (r4?.resources?.length) {
-          // Filter: keep only resources belonging to this specific character's subfolder
           resources = r4.resources.filter((r: any) => {
             const pid: string = r.public_id || "";
             const af: string = r.asset_folder || "";
