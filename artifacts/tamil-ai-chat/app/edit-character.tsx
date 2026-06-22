@@ -183,9 +183,9 @@ ATTIRE: ...`;
               const faceMatch = out.match(/FACE:\s*(.+)/i);
               const bodyMatch = out.match(/BODY:\s*(.+)/i);
               const attireMatch = out.match(/ATTIRE:\s*(.+)/i);
-              if (faceMatch?.[1]) setFaceDesc(prev => prev.trim() ? prev : faceMatch[1].trim());
-              if (bodyMatch?.[1]) setBodyDesc(prev => prev.trim() ? prev : bodyMatch[1].trim());
-              if (attireMatch?.[1]) setAttireDesc(prev => prev.trim() ? prev : attireMatch[1].trim());
+              if (faceMatch?.[1]) setFaceDesc(faceMatch[1].trim());
+              if (bodyMatch?.[1]) setBodyDesc(bodyMatch[1].trim());
+              if (attireMatch?.[1]) setAttireDesc(attireMatch[1].trim());
               return;
             }
           }
@@ -253,6 +253,9 @@ ATTIRE: ...`;
           const cloudUrl = await uploadToCloudinary(asset.base64, mime, 'my-girls/avatars');
           if (mode === 'normal') setNormalAvatarUri(cloudUrl.url);
           else setPresanaAvatarUri(cloudUrl.url);
+          // Auto-analyze: update Face/Body/Attire fields from mode photo
+          setAnalyzingFields(true);
+          await analyzeAndFillFields(asset.base64).finally(() => setAnalyzingFields(false));
         } catch {
           Alert.alert('Upload Failed', 'Cloud upload தோல்வி — ☁️ Cloud URL option use பண்ணுங்க');
         } finally { setUploadingAvatar(false); }
