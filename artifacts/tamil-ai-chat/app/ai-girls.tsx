@@ -234,12 +234,14 @@ export default function AIGirlsScreen() {
     setShowAddCharModal(false);
     setNewCharName(''); setNewCharRole(''); setNewCharSub('');
     loadPersonas();
-    // Auto-create Cloudinary folders for new character (fire-and-forget)
-    const safeName = name.toLowerCase().replace(/\s+/g, '_');
-    createCloudinaryFolder(`my-girls/${safeName}`).catch(() => {});
-    createCloudinaryFolder(`my-girls/videos/${safeName}`).catch(() => {});
-    Alert.alert('✅', `"${name}" character add ஆச்சு!\n\n📁 Cloudinary folder ready: my-girls/${safeName}/`);
-  };
+    // Auto-create Cloudinary folders + all 15 style subfolders (fire-and-forget)
+    const ALL_PHOTO_STYLE_IDS = ['breast','buttocks','cleavage','halfbreast','highslit','legs','lingerie','lowneck','normal','nude','seductive','seminude','sleeping','wet','saree'];
+    createCloudinaryFolder(`my-girls/${id}`).catch(() => {});
+    createCloudinaryFolder(`my-girls/videos/${id}`).catch(() => {});
+    ALL_PHOTO_STYLE_IDS.forEach(styleId => createCloudinaryFolder(`my-girls/${id}/${styleId}`).catch(() => {}));
+    Alert.alert(`✅`, `"${name}" character add ஆச்சு!
+
+📁 Cloudinary folders ready (main + ${ALL_PHOTO_STYLE_IDS.length} style folders): my-girls/${id}/`);
 
   // ── blob URI → base64 helper ──────────────────────────────────
   const uriToBase64 = async (uri: string): Promise<string> => {
