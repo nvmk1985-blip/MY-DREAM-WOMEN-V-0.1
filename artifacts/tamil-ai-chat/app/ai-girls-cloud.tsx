@@ -15,6 +15,7 @@ import {
   uploadToCloudinary,
   uploadUriToCloudinary,
   deleteFromCloudinary,
+  createCloudinaryFolder,
 } from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -399,7 +400,10 @@ export default function AIGirlsCloudScreen() {
   const selectStyle = (style: typeof PHOTO_STYLES[0]) => {
     setSelectedStyle(style);
     setDepth(2);
-    if (selectedChar) loadPhotos(selectedChar.id, style.id);
+    if (selectedChar) {
+      createCloudinaryFolder(`my-girls/${selectedChar.id}/${style.id}`).catch(() => {});
+      loadPhotos(selectedChar.id, style.id);
+    }
   };
 
   const doDeletePhoto = async (photo: CloudPhoto) => {
@@ -456,11 +460,31 @@ export default function AIGirlsCloudScreen() {
       const updated = customChars.filter(c => c.id !== id);
       setCustomChars(updated);
       await AsyncStorage.setItem(CUSTOM_CHARS_KEY, JSON.stringify(updated));
+      // Delete all Cloudinary photos in each style subfolder
+      try {
+        const allStyles = [...PHOTO_STYLES, ...customStyles];
+        for (const style of allStyles) {
+          const imgs = await listCloudinaryImages(`my-girls/${id}/${style.id}`).catch(() => []);
+          for (const img of imgs) { deleteFromCloudinary(img.public_id).catch(() => {}); }
+        }
+      } catch {}
     } else {
       const updated = customStyles.filter(s => s.id !== id);
       setCustomStyles(updated);
       await AsyncStorage.setItem(CUSTOM_STYLES_KEY, JSON.stringify(updated));
+      // Delete all Cloudinary photos in this style folder (for current character)
+      if (selectedChar) {
+        try {
+          const imgs = await listCloudinaryImages(`my-girls/${selectedChar.id}/${id}`).catch(() => []);
+          for (const img of imgs) { deleteFromCloudinary(img.public_id).catch(() => {}); }
+        } catch {}
+      }
     }
+    // Clear local AsyncStorage cache for deleted folder
+    const cacheKey = type === 'style' && selectedChar
+      ? `cloud_photos_${selectedChar.id}_${id}`
+      : null;
+    if (cacheKey) AsyncStorage.removeItem(cacheKey).catch(() => {});
   };
 
   // Breadcrumb
