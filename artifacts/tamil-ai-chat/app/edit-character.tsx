@@ -51,6 +51,7 @@ export default function EditCharacterScreen() {
   const [relationship, setRelationship] = useState('');
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [analyzingFields, setAnalyzingFields] = useState(false);
   const [showCloudUrl, setShowCloudUrl] = useState(false);
   const [cloudUrlInput, setCloudUrlInput] = useState('');
   const [normalMode, setNormalMode] = useState(false);
@@ -139,6 +140,60 @@ export default function EditCharacterScreen() {
     }
   };
 
+  // Auto-analyze uploaded avatar → fill Face/Body/Attire fields using Gemini
+  const analyzeAndFillFields = async (base64: string) => {
+    try {
+      const keysRaw = await AsyncStorage.getItem('api_keys_store');
+      const parsed = keysRaw ? JSON.parse(keysRaw) : {};
+      const geminiKeys: string[] = [];
+      for (let k = 1; k <= 10; k++) {
+        const v = (parsed[`gemini_${k}`] ?? '').trim();
+        if (v) geminiKeys.push(v);
+      }
+      const legacyGem = (parsed['gemini'] ?? '').trim();
+      if (legacyGem && !geminiKeys.includes(legacyGem)) geminiKeys.push(legacyGem);
+      if (geminiKeys.length === 0) return;
+
+      const prompt = `Look at this photo and describe the person in three short English phrases (each under 15 words):
+FACE: [age, skin tone, face shape, eye type, hair length/color/style]
+BODY: [build/figure type, height impression, proportions]
+ATTIRE: [exactly what clothing is worn — color, type, style]
+
+Reply ONLY in this format, nothing else:
+FACE: ...
+BODY: ...
+ATTIRE: ...`;
+
+      for (const gKey of geminiKeys) {
+        try {
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${gKey}`,
+            { method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [
+                { inlineData: { mimeType: 'image/jpeg', data: base64 } },
+                { text: prompt }
+              ]}]}),
+              signal: AbortSignal.timeout(30000) }
+          );
+          if (res.ok) {
+            const j = await res.json() as any;
+            const out: string = j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
+            if (out.length > 10) {
+              const faceMatch = out.match(/FACE:\s*(.+)/i);
+              const bodyMatch = out.match(/BODY:\s*(.+)/i);
+              const attireMatch = out.match(/ATTIRE:\s*(.+)/i);
+              if (faceMatch?.[1]) setFaceDesc(prev => prev.trim() ? prev : faceMatch[1].trim());
+              if (bodyMatch?.[1]) setBodyDesc(prev => prev.trim() ? prev : bodyMatch[1].trim());
+              if (attireMatch?.[1]) setAttireDesc(prev => prev.trim() ? prev : attireMatch[1].trim());
+              return;
+            }
+          }
+        } catch {}
+      }
+    } catch {}
+  };
+
   const pickAvatar = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) { Alert.alert('Permission', 'Gallery permission வேணும்'); return; }
@@ -154,6 +209,9 @@ export default function EditCharacterScreen() {
           const mime = asset.mimeType || 'image/jpeg';
           const cloudUrl = await uploadToCloudinary(asset.base64, mime, 'my-girls/avatars');
           setAvatarPhotoUri(cloudUrl.url);
+          // Auto-analyze: fill Face/Body/Attire fields from photo
+          setAnalyzingFields(true);
+          await analyzeAndFillFields(asset.base64).finally(() => setAnalyzingFields(false));
         } catch {
           Alert.alert('Upload failed', 'Cloud upload தோல்வி — ☁️ Cloud URL option use பண்ணுங்க');
         } finally {
@@ -724,7 +782,13 @@ export default function EditCharacterScreen() {
             {/* IMAGE GENERATION DETAILS */}
             <View style={styles.card}>
               <Text style={styles.sectionLabel}>IMAGE GENERATION DETAILS</Text>
-              <Field label="A. முக அமைப்பு (FACE)" value={faceDesc} onChange={setFaceDesc} hint="e.g. beautiful Tamil woman, 24 years old, long wavy black hair..." minH={80} />
+              {analyzingFields && (
+          <View style={{ flexDirection:'row', alignItems:'center', marginBottom:8, padding:10, backgroundColor:'#E3F2FD', borderRadius:8 }}>
+            <ActivityIndicator size="small" color="#1565C0" style={{ marginRight:8 }} />
+            <Text style={{ color:'#1565C0', fontSize:13, fontWeight:'600' }}>📸 Photo analyze ஆகுது... Face/Body/Attire auto-fill ஆகும்</Text>
+          </View>
+        )}
+        <Field label="A. முக அமைப்பு (FACE)" value={faceDesc} onChange={setFaceDesc} hint="e.g. beautiful Tamil woman, 24 years old, long wavy black hair..." minH={80} />
               <View style={styles.divider} />
               <Field label="B. உடல் அமைப்பு (BODY)" value={bodyDesc} onChange={setBodyDesc} hint="e.g. slim curvy figure, natural proportioned..." minH={60} />
               <View style={styles.divider} />
