@@ -234,7 +234,11 @@ export default function AIGirlsScreen() {
     setShowAddCharModal(false);
     setNewCharName(''); setNewCharRole(''); setNewCharSub('');
     loadPersonas();
-    Alert.alert('✅', `"${name}" character add ஆச்சு!`);
+    // Auto-create Cloudinary folders for new character (fire-and-forget)
+    const safeName = name.toLowerCase().replace(/\s+/g, '_');
+    createCloudinaryFolder(`my-girls/${safeName}`).catch(() => {});
+    createCloudinaryFolder(`my-girls/videos/${safeName}`).catch(() => {});
+    Alert.alert('✅', `"${name}" character add ஆச்சு!\n\n📁 Cloudinary folder ready: my-girls/${safeName}/`);
   };
 
   // ── blob URI → base64 helper ──────────────────────────────────
