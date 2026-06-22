@@ -635,3 +635,20 @@ export async function analyzeFile(params: {
     throw e;
   }
 }
+
+// ── Create Cloudinary folder for a new character ─────────────────────────────
+export async function createCloudinaryFolder(folderPath: string): Promise<void> {
+  try {
+    const res = await fetch(`${REPLIT_API}/api/cloudinary/create-folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderPath }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({})) as any;
+      console.warn('[createCloudinaryFolder] failed:', err?.error || res.status);
+    }
+  } catch (e) {
+    console.warn('[createCloudinaryFolder] network error:', e);
+  }
+}
