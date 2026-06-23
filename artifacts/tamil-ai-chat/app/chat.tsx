@@ -548,18 +548,32 @@ Each label: 1 sentence max.`;
   const [showAddStyleModal, setShowAddStyleModal] = useState(false);
   const [newStyleName, setNewStyleName] = useState('');
   const [newStylePrompt, setNewStylePrompt] = useState('');
+  const [hiddenBuiltinIds, setHiddenBuiltinIds] = useState<string[]>([]);
 
-  // Combined styles: built-in + custom
-  const PHOTO_STYLES = [...BUILTIN_PHOTO_STYLES, ...customStyles];
+  const HIDDEN_BUILTIN_KEY = 'hidden_builtin_styles_v1';
+
+  // Combined styles: built-in (minus hidden) + custom
+  const PHOTO_STYLES = [
+    ...BUILTIN_PHOTO_STYLES.filter(s => !hiddenBuiltinIds.includes(s.id)),
+    ...customStyles,
+  ];
 
   const loadCustomStyles = useCallback(async () => {
     try {
-      const raw = await AsyncStorage.getItem(CUSTOM_STYLES_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        const valid = parsed.filter(s => s && typeof s.id === 'string' && typeof s.label === 'string');
-        setCustomStyles(valid);
+      const [rawCustom, rawHidden] = await Promise.all([
+        AsyncStorage.getItem(CUSTOM_STYLES_KEY),
+        AsyncStorage.getItem(HIDDEN_BUILTIN_KEY),
+      ]);
+      if (rawCustom) {
+        const parsed = JSON.parse(rawCustom);
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter(s => s && typeof s.id === 'string' && typeof s.label === 'string');
+          setCustomStyles(valid);
+        }
+      }
+      if (rawHidden) {
+        const parsedHidden = JSON.parse(rawHidden);
+        if (Array.isArray(parsedHidden)) setHiddenBuiltinIds(parsedHidden);
       }
     } catch {}
   }, []);
@@ -610,6 +624,18 @@ Each label: 1 sentence max.`;
       const updated = customStyles.filter(s => s.id !== id);
       setCustomStyles(updated);
       await AsyncStorage.setItem(CUSTOM_STYLES_KEY, JSON.stringify(updated));
+    }
+  };
+
+  const removeBuiltinStyle = async (id: string) => {
+    try {
+      const raw = await AsyncStorage.getItem(HIDDEN_BUILTIN_KEY);
+      const current: string[] = raw ? JSON.parse(raw) : [];
+      const updated = [...new Set([...current, id])];
+      await AsyncStorage.setItem(HIDDEN_BUILTIN_KEY, JSON.stringify(updated));
+      setHiddenBuiltinIds(updated);
+    } catch {
+      setHiddenBuiltinIds(prev => [...new Set([...prev, id])]);
     }
   };
 
@@ -2104,17 +2130,21 @@ Each label: 1 sentence max.`;
                         </Text>
                         <Text style={styles.styleRowArrow}>›</Text>
                       </TouchableOpacity>
-                      {isCustom && (
-                        <TouchableOpacity
-                          onPress={() => Alert.alert('Style நீக்கு', `"${style.label}" delete பண்ணணுமா?`, [
+                      <TouchableOpacity
+                        onPress={() => Alert.alert(
+                          `🗑 "${style.label}" Delete?`,
+                          'இந்த style-ஐ list-ல் இருந்து நீக்கணுமா?',
+                          [
                             { text: 'Cancel', style: 'cancel' },
-                            { text: 'Delete', style: 'destructive', onPress: () => removeCustomStyle(style.id) },
-                          ])}
-                          style={{ paddingHorizontal: 12, paddingVertical: 14 }}
-                        >
-                          <Text style={{ fontSize: 18, color: '#e53935' }}>🗑️</Text>
-                        </TouchableOpacity>
-                      )}
+                            { text: 'Delete ✓', style: 'destructive', onPress: () =>
+                              isCustom ? removeCustomStyle(style.id) : removeBuiltinStyle(style.id)
+                            },
+                          ]
+                        )}
+                        style={{ paddingHorizontal: 12, paddingVertical: 14 }}
+                      >
+                        <Text style={{ fontSize: 18, color: '#e53935' }}>🗑️</Text>
+                      </TouchableOpacity>
                     </View>
                   );
                 })}
