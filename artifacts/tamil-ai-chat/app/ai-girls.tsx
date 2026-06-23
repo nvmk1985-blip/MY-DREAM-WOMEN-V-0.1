@@ -702,6 +702,33 @@ AsyncStorage-ல் save ஆச்சு!`
     setShowEditRel(false);
   };
 
+  const deleteCharacter = () => {
+    if (!editingPersona) return;
+    const pName = editingPersona.name;
+    const pId = editingPersona.id;
+    Alert.alert(
+      `🗑 "${pName}" Delete?`,
+      `இந்த character-ஐ நிரந்தரமாக delete பண்ணிட்டா திரும்ப வராது.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete ✓', style: 'destructive', onPress: async () => {
+            try {
+              const raw = await AsyncStorage.getItem('custom_personas_v1');
+              if (raw) {
+                const all = JSON.parse(raw);
+                const filtered = all.filter((p: any) => p.id !== pId);
+                await AsyncStorage.setItem('custom_personas_v1', JSON.stringify(filtered));
+                setCustomChars(filtered);
+              }
+              await AsyncStorage.removeItem(`relationship_${pId}`);
+              setPersonas(prev => prev.filter(p => p.id !== pId));
+            } catch(e) { console.warn('deleteCharacter error:', e); }
+            setShowEditRel(false);
+        }},
+      ]
+    );
+  };
+
   const startGroupChat = () => {
     const selected = personas.filter(p => selectedForGroup.includes(p.id));
     if (selected.length < 2) return;
@@ -1458,6 +1485,9 @@ Then write these prompts:
               </TouchableOpacity>
               <TouchableOpacity style={s.saveBtn} onPress={saveRelationship}>
                 <Text style={s.saveTxt}>சேமி ✓</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.saveBtn, { backgroundColor: '#c62828' }]} onPress={deleteCharacter}>
+                <Text style={s.saveTxt}>🗑 Delete</Text>
               </TouchableOpacity>
             </View>
           </View>
