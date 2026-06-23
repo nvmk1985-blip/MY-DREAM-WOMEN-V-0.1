@@ -225,7 +225,8 @@ export default function AIGirlsScreen() {
     if (!name) { Alert.alert('பெயர் வேணும்', 'Character பெயர் type பண்ணுங்க'); return; }
 
     // Folder name = character name (lowercase, spaces → hyphens)
-    const folderName = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
+    const rawFolder = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
+    const folderName = rawFolder || `char-${Date.now().toString(36)}`;
 
     const id = 'custom_' + folderName + '_' + Date.now().toString(36);
     const color = FOLDER_COLORS[Math.floor(Math.random() * FOLDER_COLORS.length)];
@@ -257,24 +258,29 @@ export default function AIGirlsScreen() {
     setNewCharDesc(''); setNewCharPersonality('');
     loadPersonas();
 
-    // ── Auto-create Cloudinary folders (fire-and-forget) ──────────
-    // Main folder: my-girls/{name}/
-    // Video folder: my-girls/videos/{name}/
-    // Photo style subfolders: my-girls/{name}/{style}/
+    // ── Auto-create Cloudinary folders ──────────────────────────
+    // Structure: my-girls/{folderName}/ + video + 12 style sub-folders
     const STYLE_IDS = PHOTO_FOLDERS.map(f => f.id);
-    createCloudinaryFolder(`my-girls/${folderName}`).catch(() => {});
-    createCloudinaryFolder(`my-girls/videos/${folderName}`).catch(() => {});
-    STYLE_IDS.forEach(styleId =>
-      createCloudinaryFolder(`my-girls/${folderName}/${styleId}`).catch(() => {})
-    );
 
     Alert.alert(
       `✅ "${name}" add ஆச்சு!`,
-      `📁 Cloudinary folders creating:\n` +
-      `my-girls/${folderName}/\n` +
-      `└── ${STYLE_IDS.join(', ')}\n\n` +
-      `AsyncStorage-ல் save ஆச்சு!`
+      `📁 Cloudinary folders creating...
+my-girls/${folderName}/
+└── ${STYLE_IDS.join(", ")}
+
+AsyncStorage-ல் save ஆச்சு!`
     );
+
+    // Real folder creation in background
+    Promise.allSettled([
+      createCloudinaryFolder(`my-girls/${folderName}`),
+      createCloudinaryFolder(`my-girls/videos/${folderName}`),
+      ...STYLE_IDS.map(styleId => createCloudinaryFolder(`my-girls/${folderName}/${styleId}`)),
+    ]).then(results => {
+      const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && r.value === false)).length;
+      if (failed > 0) console.warn(`[Cloudinary] ${failed}/${results.length} folders failed — ${folderName}`);
+      else console.log(`[Cloudinary] ✅ All ${results.length} folders created: my-girls/${folderName}/`);
+    });
   };
 
   // ── blob URI → base64 helper ──────────────────────────────────
