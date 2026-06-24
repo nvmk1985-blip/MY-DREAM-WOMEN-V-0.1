@@ -608,9 +608,10 @@ export async function analyzeFile(params: {
     ]);
     const parsed = saved ? JSON.parse(saved) as Record<string, string> : {};
     const enabled = enabledRaw ? JSON.parse(enabledRaw) as Record<string, boolean> : {};
-    for (let i = 1; i <= 13; i++) {
-      const k = parsed[`gemini_${i}`];
-      if (k?.trim() && enabled[`gemini_${i}`] !== false) clientGeminiKeys.push(k.trim());
+    // multimedia_gemini_1…5 — dedicated keys for image/video/document analysis
+    for (let i = 1; i <= 5; i++) {
+      const k = parsed[`multimedia_gemini_${i}`];
+      if (k?.trim() && enabled[`multimedia_gemini_${i}`] !== false) clientGeminiKeys.push(k.trim());
     }
   } catch {}
 
