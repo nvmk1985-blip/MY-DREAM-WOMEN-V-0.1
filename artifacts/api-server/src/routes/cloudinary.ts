@@ -175,7 +175,7 @@ router.get("/cloudinary/videos", async (req, res) => {
 
 // ── POST /api/cloudinary/create-folder ────────────────────────────────────
 // Creates a Cloudinary folder using Admin API (requires api_key + api_secret)
-router.post("/create-folder", async (req, res) => {
+router.post("/cloudinary/create-folder", async (req, res) => {
   try {
     const { folderPath } = req.body as { folderPath: string };
     if (!folderPath) return res.status(400).json({ error: "folderPath required" });
