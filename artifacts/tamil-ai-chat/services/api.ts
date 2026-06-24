@@ -636,27 +636,21 @@ export async function analyzeFile(params: {
   }
 }
 
-// ── Create Cloudinary folder by uploading a tiny 1px placeholder (no server needed) ──
-// Uses unsigned preset directly — works even when Render server is sleeping
-const PLACEHOLDER_PNG_B64 =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
-
+// ── Create Cloudinary folder via server Admin API ──────────────────────────
 export async function createCloudinaryFolder(folderPath: string): Promise<boolean> {
   try {
     if (!folderPath || folderPath.endsWith('/')) {
       console.warn('[createCloudinaryFolder] invalid path:', folderPath);
       return false;
     }
-    const endpoint = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`;
-    const form = new FormData();
-    form.append('file', `data:image/png;base64,${PLACEHOLDER_PNG_B64}`);
-    form.append('upload_preset', CLOUDINARY_PRESET);
-    form.append('folder', folderPath);
-    form.append('public_id', '.keep');
-    const res = await fetch(endpoint, { method: 'POST', body: form });
+    const res = await fetch(`${REPLIT_API}/api/cloudinary/create-folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folderPath }),
+    });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
-      console.warn('[createCloudinaryFolder] HTTP', res.status, folderPath, txt.substring(0, 100));
+      console.warn('[createCloudinaryFolder] server error', res.status, folderPath, txt.slice(0,100));
       return false;
     }
     return true;
