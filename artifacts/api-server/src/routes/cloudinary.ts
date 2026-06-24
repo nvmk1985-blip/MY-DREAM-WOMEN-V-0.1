@@ -203,7 +203,7 @@ router.post("/cloudinary/create-folder", async (req, res) => {
     await cl.uploader.unsigned_upload(
       `data:image/png;base64,${PLACEHOLDER_B64}`,
       PRESET_NAME,
-      { folder: folderPath, public_id: '.keep', overwrite: false, resource_type: 'image' }
+      { folder: folderPath, public_id: '.keep', resource_type: 'image' }
     );
     return res.json({ ok: true, folder: folderPath, method: 'upload' });
   } catch (err2: any) {
