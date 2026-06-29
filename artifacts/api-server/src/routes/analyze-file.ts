@@ -83,6 +83,15 @@ function getGroqKey(): string | undefined {
   return val?.trim() || undefined;
 }
 
+function getOpenRouterKey(): string | undefined {
+  const val =
+    process.env["OPEN_ROTTER_API_KEY"] ||
+    process.env["OPEN_ROUTER_API_KEY"] ||
+    process.env["OPENROUTER_API_KEY"] ||
+    process.env["AI_INTEGRATIONS_OPENROUTER_API_KEY"];
+  return val?.trim() || undefined;
+}
+
 const laxSafety = [
   { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
   { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
@@ -240,6 +249,74 @@ async function tryGroqText(
   } catch {
     return null;
   }
+}
+
+// ── OpenRouter Qwen 2.5 VL — video vision fallback (uses Cloudinary URL) ──────
+const OPENROUTER_VIDEO_MODELS = [
+  "qwen/qwen2.5-vl-72b-instruct",
+  "qwen/qwen2.5-vl-7b-instruct",
+];
+
+async function tryOpenRouterVideoVision(
+  videoUrl: string,
+  userText: string,
+  systemInstruction: string,
+  logLabel = "video-openrouter",
+): Promise<{ text: string | null; errors: string[] }> {
+  const key = getOpenRouterKey();
+  const errors: string[] = [];
+  if (!key) {
+    errors.push("OpenRouter key இல்லை — Render Multimedia env-ல் OPEN_ROTTER_API_KEY set பண்ணவும்");
+    return { text: null, errors };
+  }
+  for (const model of OPENROUTER_VIDEO_MODELS) {
+    try {
+      console.log(`[analyze-file][${logLabel}] trying model=${model}`);
+      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${key}`,
+          "HTTP-Referer": "https://my-dream-women.onrender.com",
+          "X-Title": "My Dream Women",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: systemInstruction },
+            {
+              role: "user",
+              content: [
+                { type: "video_url", video_url: { url: videoUrl } },
+                { type: "text", text: userText },
+              ],
+            },
+          ],
+          max_tokens: 600,
+          temperature: 0.9,
+        }),
+        signal: AbortSignal.timeout(55000),
+      });
+      if (resp.ok) {
+        const json: any = await resp.json();
+        const text = (json.choices?.[0]?.message?.content ?? "").trim();
+        if (text) {
+          console.log(`[analyze-file][${logLabel}] success model=${model} len=${text.length}`);
+          return { text, errors };
+        }
+      } else if (resp.status === 404) {
+        errors.push(`OpenRouter ${model}: not found (404)`);
+        continue;
+      } else {
+        const errText = await resp.text();
+        errors.push(`OpenRouter ${model}: ${resp.status} — ${errText.slice(0, 200)}`);
+        if (resp.status === 401 || resp.status === 403) break;
+      }
+    } catch (e: any) {
+      errors.push(`OpenRouter ${model}: ${e.message?.slice(0, 100)}`);
+    }
+  }
+  return { text: null, errors };
 }
 
 // Default image/video analysis prompt (user-defined)
@@ -487,6 +564,23 @@ router.post("/analyze-file", async (req, res) => {
             }
           }
         }
+      }
+
+      // ── Step 2.5: OpenRouter Qwen 2.5 VL video vision fallback ─────────────
+      // Runs when ALL Gemini keys fail (blocked/exhausted).
+      // Requires Cloudinary URL (fileUrl) — uploaded by client before calling analyze-file.
+      // media-chat.ts already uses this pattern successfully.
+      if (fileUrl) {
+        console.log(`[analyze-file][video] OpenRouter Qwen fallback with Cloudinary URL`);
+        const { text: orVideoReply, errors: orVideoErrors } = await tryOpenRouterVideoVision(
+          fileUrl as string,
+          prompt,
+          mediaSystemInstruction,
+        );
+        if (orVideoReply) return res.json({ reply: orVideoReply });
+        videoErrors.push(...orVideoErrors);
+      } else {
+        console.log(`[analyze-file][video] No fileUrl — OpenRouter Qwen fallback skipped`);
       }
 
       // ── Step 3: Groq text-only fallback
