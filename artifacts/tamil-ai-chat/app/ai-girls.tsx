@@ -333,7 +333,7 @@ AsyncStorage-ல் save ஆச்சு!`
     if (!perm.granted) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85, allowsEditing: true, aspect: [1, 1],
+      quality: 0.85, allowsEditing: false,
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
@@ -382,7 +382,7 @@ AsyncStorage-ல் save ஆச்சு!`
     if (!perm.granted) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85, allowsEditing: true, aspect: [1, 1],
+      quality: 0.85, allowsEditing: false,
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
@@ -411,7 +411,7 @@ AsyncStorage-ல் save ஆச்சு!`
     if (!perm.granted) return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85, allowsEditing: true, aspect: [1, 1],
+      quality: 0.85, allowsEditing: false,
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
