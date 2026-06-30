@@ -39,7 +39,7 @@ async function tryGeminiMultiKey(contents: any, config: any): Promise<string> {
     try {
       const client = new GoogleGenAI({
         apiKey: key,
-        httpOptions: { headers: { "User-Agent": "aistudio-build" } },
+        httpOptions: { apiVersion: "v1", headers: { "User-Agent": "aistudio-build" } },
       });
       // 28s timeout per key — prevents Render free-tier "Aborted" hanging
       const timeout = new Promise<never>((_, rej) =>
@@ -436,14 +436,16 @@ ${userPrompt ? `User request: "${userPrompt}"` : ""}`;
         console.warn(`[Video] Too large for Gemini inline (${videoSizeMB.toFixed(1)}MB) — using Groq text reply`);
       }
 
-      // Groq text-only fallback — warm reply without mentioning technical limits
+      // Groq text-only fallback — warm contextual Tamil reply
       try {
-        const groqFallbackPrompt = `A user just shared a video clip named "${fileName}" with you. React with genuine excitement and curiosity! Ask what the video shows, whether it is funny, sweet, or something special. Be playful and warm. Respond ONLY in spoken Tamil (பேச்சு வழக்கு). Keep it short — 1-2 sentences. NEVER mention video length, file size, or any technical issues.`;
+        const groqFallbackPrompt = `The user shared a video file named "${fileName}". React warmly and naturally in spoken Tamil. Ask what the video shows, whether it is funny or sweet. Keep it short — 1-2 sentences only. NEVER mention technical errors, APIs, or file size.`;
         const groqReply = await tryGroqFallback("video", "", mimeType || "video/mp4", groqFallbackPrompt, systemInstruction);
         if (groqReply) return res.json({ reply: groqReply, docText: "" });
-      } catch {}
+      } catch (groqErr) {
+        console.warn("[Video] Groq fallback failed:", groqErr?.message);
+      }
 
-      return res.json({ reply: `வாவ்! வீடியோ அனுப்பினீங்களா? 😍 என்ன video-ஆ? சொல்லுங்க!`, docText: "" });
+      return res.json({ reply: `வாவ்! "${fileName}" வீடியோ அனுப்பினீங்களா? 😍 என்ன காட்சி இது? சொல்லுங்க!`, docText: "" });
 
     } else if (fileType === "document") {
       if (fileName.toLowerCase().endsWith(".pdf")) {
