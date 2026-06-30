@@ -1,0 +1,31 @@
+name: Deploy API to Render
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'artifacts/api-server/**'
+      - 'lib/**'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+      - '.github/workflows/deploy-render.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Trigger Render Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy hook
+        run: |
+          curl -s -o response.json -w "%{http_code}" \
+            --request POST "${{ secrets.RENDER_DEPLOY_HOOK }}" | tee status.txt
+          STATUS=$(cat status.txt)
+          echo "Render response:"
+          cat response.json || true
+          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 300 ]; then
+            echo "✅ Render deploy triggered successfully (HTTP $STATUS)"
+          else
+            echo "❌ Render deploy failed (HTTP $STATUS)"
+            exit 1
+          fi
