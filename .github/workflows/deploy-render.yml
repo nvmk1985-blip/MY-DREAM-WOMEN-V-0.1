@@ -16,16 +16,22 @@ jobs:
     name: Trigger Render Deploy
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Render deploy hook
+      - name: Trigger Render deploy via API
         run: |
-          curl -s -o response.json -w "%{http_code}" \
-            --request POST "${{ secrets.RENDER_DEPLOY_HOOK }}" | tee status.txt
-          STATUS=$(cat status.txt)
-          echo "Render response:"
-          cat response.json || true
-          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 300 ]; then
-            echo "✅ Render deploy triggered successfully (HTTP $STATUS)"
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys" \
+            -d '{"clearCache":"do_not_clear"}')
+          echo "Response: $RESPONSE"
+          STATUS=$(echo "$RESPONSE" | grep -o '"status":"[^"]*"' | head -1 | sed 's/"status":"//;s/"//')
+          DEPLOY_ID=$(echo "$RESPONSE" | grep -o '"id":"dep[^"]*"' | head -1 | sed 's/"id":"//;s/"//')
+          echo "Deploy ID: $DEPLOY_ID"
+          echo "Status: $STATUS"
+          if echo "$RESPONSE" | grep -q '"id":"dep'; then
+            echo "✅ Render deploy triggered successfully!"
           else
-            echo "❌ Render deploy failed (HTTP $STATUS)"
+            echo "❌ Render deploy failed"
+            echo "$RESPONSE"
             exit 1
           fi
