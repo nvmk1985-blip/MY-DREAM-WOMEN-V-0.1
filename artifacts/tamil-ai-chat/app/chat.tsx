@@ -8,17 +8,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useFocusEffect } from 'expo-router';
-import { sendMessage, sendToLocalGemma, Message, generateImage, generateImageHuggingFace, listCloudinaryImages, listCloudinaryVideos, analyzeFile, uploadUriToCloudinary } from '../services/api';
-import MediaImageViewer from '../components/MediaImageViewer';
-import MediaVideoPlayer from '../components/MediaVideoPlayer';
-
-function cloudVideoThumbnail(videoUrl: string): string {
-  try {
-    return videoUrl
-      .replace('/video/upload/', '/video/upload/so_0,w_400,h_225,c_fill,f_jpg/')
-      .replace(/\.(mp4|mov|avi|mkv|webm|m4v)(\?.*)?$/, '.jpg');
-  } catch { return ''; }
-}
+import { sendMessage, sendToLocalGemma, Message, generateImage, generateImageHuggingFace, listCloudinaryImages, listCloudinaryVideos, analyzeFile } from '../services/api';
 
 // Per-style photo cache helpers — same key as ai-girls-cloud.tsx uses
 const stylePhotoCacheKey = (personaId: string, styleId: string) =>
@@ -265,27 +255,13 @@ export default function ChatScreen() {
   const [userBehaviour, setUserBehaviour] = useState('');
 
   const reloadPersona = useCallback(async () => {
-    // Step 1: Look up built-in personas first
     const base = ALL_PERSONAS.find(p => p.id === personaId);
-
-    // Step 2: If not found, look up custom personas from AsyncStorage
-    let custom: any = null;
-    if (!base) {
-      try {
-        const raw = await AsyncStorage.getItem('custom_personas_v1');
-        const list = raw ? JSON.parse(raw) : [];
-        custom = list.find((p: any) => p.id === personaId) ?? null;
-      } catch {}
-    }
-
-    const finalPersona = base || custom;
-    if (!finalPersona) return; // truly not found
-
+    if (!base) return;
     try {
-      const saved = await AsyncStorage.getItem(`persona_edit_${finalPersona.id}`);
+      const saved = await AsyncStorage.getItem(`persona_edit_${base.id}`);
       if (saved) {
         const data = JSON.parse(saved);
-        setPersona({ ...finalPersona, ...data, prompt: data.prompt ?? finalPersona.prompt });
+        setPersona({ ...base, ...data, prompt: data.prompt ?? base.prompt });
         setAvatarUri(data.avatarPhotoUri);
         setNormalAvatarUri(data.normalAvatarUri);
         setPresanaAvatarUri(data.presanaAvatarUri);
@@ -297,13 +273,12 @@ export default function ChatScreen() {
         setUserBodyDesc(data.userBodyDesc ?? '');
         setAvatarReflectionEnabled(data.avatarReflectionEnabled !== false);
         setAvatarReflectionPrompt(data.avatarReflectionPrompt ?? '');
-        setImageVideoSystemPrompt(data.imageVideoPrompt ?? '');
       } else {
-        setPersona(finalPersona);
-        setAvatarUri(finalPersona.avatarPhotoUri);
+        setPersona(base);
+        setAvatarUri(base.avatarPhotoUri);
       }
     } catch {
-      setPersona(finalPersona);
+      setPersona(base);
     }
   }, [personaId]);
 
@@ -332,8 +307,6 @@ export default function ChatScreen() {
     };
 
     // Analyze one image → structured profile (caches per URI, respects user edits)
-    // Primary: Gemini Flash (uses user's existing Gemini keys — no extra setup needed)
-    // Fallback: HuggingFace Qwen2-VL / Florence-2 / LLaVA (if HF key set)
     const analyzeAvatar = async (uri: string, slot: string): Promise<string | null> => {
       if (!uri) return null;
       const cKey = 'avprofile_' + slot + '_' + uri.replace(/[^a-zA-Z0-9]/g,'').slice(-24);
@@ -346,15 +319,8 @@ export default function ChatScreen() {
         if (cached) return cached;
 
         const keysRaw = await AsyncStorage.getItem('api_keys_store');
-        const parsed = keysRaw ? JSON.parse(keysRaw) : {};
-        const hfKey = (parsed['hf'] ?? '').trim();
-        // Avatar analysis: Multimedia Gemini keys ONLY (multimedia_gemini_1…5)
-        // Chat keys (gemini_1…13) reserved for chat — not used here
-        const geminiKeys: string[] = [];
-        for (let k = 1; k <= 5; k++) {
-          const v = (parsed[`multimedia_gemini_${k}`] ?? '').trim();
-          if (v) geminiKeys.push(v);
-        }
+        const hfKey = keysRaw ? (JSON.parse(keysRaw)['hf'] ?? '').trim() : '';
+        if (!hfKey) return null;
 
         const base64 = await toBase64(uri);
         if (!base64) return null;
@@ -374,36 +340,9 @@ COMMUNICATION STYLE: (formal/casual/warm/direct/playful)
 
 Each label: 1 sentence max.`;
 
-        // ── Gemini Flash (PRIMARY — uses user's chat Gemini keys) ──────────
-        for (const gKey of geminiKeys) {
-          try {
-            const gRes = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${gKey}`,
-              { method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [
-                  { inlineData: { mimeType: 'image/jpeg', data: base64 } },
-                  { text: PROFILE_PROMPT }
-                ]}]}),
-                signal: AbortSignal.timeout(30000) }
-            );
-            if (gRes.ok) {
-              const gj = await gRes.json() as any;
-              const out: string = gj?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? '';
-              if (out.length > 30) {
-                await AsyncStorage.setItem(cKey, out.slice(0, 800));
-                return out.slice(0, 800);
-              }
-            }
-          } catch {}
-        }
-
-        // ── HuggingFace fallback (only if hfKey set) ───────────────────────
-        if (!hfKey) return null;
-
         const imgContent = { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } };
 
-        // ── Qwen2-VL ──────────────────────────────────────────────────────
+        // ── Qwen2-VL (primary) ──────────────────────────────
         try {
           const r1 = await fetch(
             'https://api-inference.huggingface.co/models/Qwen/Qwen2-VL-7B-Instruct/v1/chat/completions',
@@ -422,7 +361,7 @@ Each label: 1 sentence max.`;
           }
         } catch {}
 
-        // ── Florence-2 ────────────────────────────────────────────────────
+        // ── Florence-2 (secondary) ────────────────────────────
         try {
           const r2 = await fetch(
             'https://api-inference.huggingface.co/models/microsoft/Florence-2-large',
@@ -441,7 +380,7 @@ Each label: 1 sentence max.`;
           }
         } catch {}
 
-        // ── LLaVA ─────────────────────────────────────────────────────────
+        // ── LLaVA (backup) ───────────────────────────────────
         try {
           const r3 = await fetch(
             'https://api-inference.huggingface.co/models/llava-hf/llava-1.5-7b-hf/v1/chat/completions',
@@ -491,19 +430,12 @@ Each label: 1 sentence max.`;
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [fileLoading, setFileLoading] = useState(false);
-  // ── Staging preview for photo/video before send ──
-  const [stagingMedia, setStagingMedia] = useState<{
-    uri: string; isVideo: boolean; b64: string; mimeType: string; fileName: string;
-  } | null>(null);
-  const [stagingCaption, setStagingCaption] = useState('');
-  const [stagingUploading, setStagingUploading] = useState(false);
   const [showGenModal, setShowGenModal] = useState(false);
   const [genPrompt, setGenPrompt] = useState('');
   const [selectedStyleId, setSelectedStyleId] = useState('normal');
   const [generatingPhoto, setGeneratingPhoto] = useState(false);
   const [videoLoading, setVideoLoading] = React.useState(false);
   const [fullViewImg, setFullViewImg] = useState<string | null>(null);
-  const [fullViewVideo, setFullViewVideo] = useState<string | null>(null);
 
   // Cloud photo browser (full-screen)
   const [showCloudBrowser, setShowCloudBrowser] = useState(false);
@@ -531,7 +463,6 @@ Each label: 1 sentence max.`;
   const [userBodyDesc, setUserBodyDesc] = useState('');
   const [avatarReflectionEnabled, setAvatarReflectionEnabled] = useState(true);
   const [avatarReflectionPrompt, setAvatarReflectionPrompt] = useState('');
-  const [imageVideoSystemPrompt, setImageVideoSystemPrompt] = useState('');
   const [avatarDescriptions, setAvatarDescriptions] = useState<{main?: string; normal?: string; presana?: string; user?: string; userNormal?: string; userPrasana?: string}>({});
 
   // ── Chat Style (wallpaper + bubble) ──
@@ -562,32 +493,18 @@ Each label: 1 sentence max.`;
   const [showAddStyleModal, setShowAddStyleModal] = useState(false);
   const [newStyleName, setNewStyleName] = useState('');
   const [newStylePrompt, setNewStylePrompt] = useState('');
-  const [hiddenBuiltinIds, setHiddenBuiltinIds] = useState<string[]>([]);
 
-  const HIDDEN_BUILTIN_KEY = 'hidden_builtin_styles_v1';
-
-  // Combined styles: built-in (minus hidden) + custom
-  const PHOTO_STYLES = [
-    ...BUILTIN_PHOTO_STYLES.filter(s => !hiddenBuiltinIds.includes(s.id)),
-    ...customStyles,
-  ];
+  // Combined styles: built-in + custom
+  const PHOTO_STYLES = [...BUILTIN_PHOTO_STYLES, ...customStyles];
 
   const loadCustomStyles = useCallback(async () => {
     try {
-      const [rawCustom, rawHidden] = await Promise.all([
-        AsyncStorage.getItem(CUSTOM_STYLES_KEY),
-        AsyncStorage.getItem(HIDDEN_BUILTIN_KEY),
-      ]);
-      if (rawCustom) {
-        const parsed = JSON.parse(rawCustom);
-        if (Array.isArray(parsed)) {
-          const valid = parsed.filter(s => s && typeof s.id === 'string' && typeof s.label === 'string');
-          setCustomStyles(valid);
-        }
-      }
-      if (rawHidden) {
-        const parsedHidden = JSON.parse(rawHidden);
-        if (Array.isArray(parsedHidden)) setHiddenBuiltinIds(parsedHidden);
+      const raw = await AsyncStorage.getItem(CUSTOM_STYLES_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const valid = parsed.filter(s => s && typeof s.id === 'string' && typeof s.label === 'string');
+        setCustomStyles(valid);
       }
     } catch {}
   }, []);
@@ -638,18 +555,6 @@ Each label: 1 sentence max.`;
       const updated = customStyles.filter(s => s.id !== id);
       setCustomStyles(updated);
       await AsyncStorage.setItem(CUSTOM_STYLES_KEY, JSON.stringify(updated));
-    }
-  };
-
-  const removeBuiltinStyle = async (id: string) => {
-    try {
-      const raw = await AsyncStorage.getItem(HIDDEN_BUILTIN_KEY);
-      const current: string[] = raw ? JSON.parse(raw) : [];
-      const updated = [...new Set([...current, id])];
-      await AsyncStorage.setItem(HIDDEN_BUILTIN_KEY, JSON.stringify(updated));
-      setHiddenBuiltinIds(updated);
-    } catch {
-      setHiddenBuiltinIds(prev => [...new Set([...prev, id])]);
     }
   };
 
@@ -993,21 +898,12 @@ Each label: 1 sentence max.`;
               const asset = result.assets[0];
               const isVideo = asset.type === 'video';
 
-              // Validate video duration — 30 seconds limit for full analysis
-              if (isVideo && asset.duration && asset.duration > 30000) {
-                Alert.alert(
-                  '⏱️ Video Too Long',
-                  `Video ${(asset.duration / 1000).toFixed(0)} seconds உள்ளது.\n\n✅ 30 seconds-க்கு கீழ் உள்ள clip மட்டும் full analyze ஆகும்.\n\nகுறுகிய clip trim பண்ணி அனுப்புங்க!`
-                );
-                return;
-              }
-
-              // Validate file size — video limit 100MB (File API), image 25MB
+              // Validate file size — video limit 19MB (Gemini inline cap), image 25MB
               const fileSizeMB = (asset.fileSize || 0) / (1024 * 1024);
-              const sizeLimit = isVideo ? 100 : 25;
+              const sizeLimit = isVideo ? 19 : 25;
               if (fileSizeMB > sizeLimit) {
                 const tip = isVideo
-                  ? `வீடியோ ${fileSizeMB.toFixed(1)}MB உள்ளது 😔 100MB-க்கு கீழ் (சுமார் 5-8 min) உள்ள clip அனுப்புங்க!`
+                  ? `வீடியோ ${fileSizeMB.toFixed(1)}MB உள்ளது 😔 19MB-க்கு கீழ் (சுமார் 30 sec) உள்ள clip அனுப்புங்க!`
                   : `படம் ${fileSizeMB.toFixed(1)}MB உள்ளது — 25MB-க்கு கீழ் இருக்கணும்.`;
                 Alert.alert('File Too Large 📁', tip);
                 return;
@@ -1039,7 +935,7 @@ Each label: 1 sentence max.`;
                 Alert.alert('❌ File Read பண்ண முடியல', `காரணம்: ${e?.message || 'Unknown error'}
 
 • Photo-க்கு: Gallery permission allow பண்ணுங்க
-• Video-க்கு: 100MB-க்கு கீழ் clip try பண்ணுங்க`);
+• Video-க்கு: 19MB-க்கு கீழ் clip try பண்ணுங்க`);
                 return;
               }
               if (!b64 || b64.length < 10) {
@@ -1047,15 +943,37 @@ Each label: 1 sentence max.`;
                 return;
               }
 
-              // Show staging preview modal instead of immediate send
-              setStagingCaption('');
-              setStagingMedia({
-                uri: asset.uri,
-                isVideo,
-                b64,
-                mimeType: asset.mimeType || (isVideo ? 'video/mp4' : 'image/jpeg'),
-                fileName: asset.fileName || (isVideo ? 'video.mp4' : 'photo.jpg'),
-              });
+              const userMsg: Message = {
+                id: Date.now().toString(), role: 'user',
+                content: isVideo ? `🎬 Video analyze பண்ணுங்க` : `📷 Photo analyze பண்ணுங்க`,
+                timestamp: new Date(),
+                sentMediaType: isVideo ? 'video' : 'image',
+                sentMediaUri: asset.uri,
+              };
+              setMessages(prev => [...prev, userMsg]);
+              setFileLoading(true);
+
+              try {
+                const { reply } = await analyzeFile({
+                  fileBase64: b64,
+                  fileName: asset.fileName || (isVideo ? 'video.mp4' : 'photo.jpg'),
+                  fileType: isVideo ? 'video' : 'image',
+                  mimeType: asset.mimeType || (isVideo ? 'video/mp4' : 'image/jpeg'),
+                  characterName: persona.name,
+                  characterPrompt: persona.prompt,
+                });
+                setMessages(prev => [...prev, {
+                  id: (Date.now()+1).toString(), role: 'assistant',
+                  content: reply, timestamp: new Date(),
+                }]);
+              } catch (e: any) {
+                const errMsg = e?.message || 'Unknown error';
+                setMessages(prev => [...prev, {
+                  id: (Date.now()+1).toString(), role: 'assistant',
+                  content: `${persona.name}: File analyze பண்ண முடியல 😔\n\nError: ${errMsg}`,
+                  timestamp: new Date(),
+                }]);
+              } finally { setFileLoading(false); }
             },
           },
           {
@@ -1133,90 +1051,6 @@ Each label: 1 sentence max.`;
     }
   }, [persona]);
 
-  // ── Send staged photo/video: upload to Cloudinary → analyzeFile ──────────────
-  const sendStagedMedia = useCallback(async () => {
-    if (!stagingMedia || !persona) return;
-    const { uri, isVideo, b64, mimeType, fileName } = stagingMedia;
-    const caption = stagingCaption.trim();
-    setStagingUploading(true);
-
-    try {
-      // 1. Upload to Cloudinary for permanent URL
-      let cloudUrl = uri; // fallback to local if upload fails
-      let cloudinaryErr: string | null = null;
-      try {
-        const folder = `chat_media/${persona.name.replace(/\s+/g,'_')}`;
-        const result = await uploadUriToCloudinary(uri, mimeType, folder);
-        cloudUrl = result.url;
-      } catch (upErr: any) {
-        cloudinaryErr = upErr?.message || 'Upload failed';
-        console.warn('[staging] Cloudinary upload failed:', cloudinaryErr);
-      }
-
-      // 2. Add user message with cloudUrl as sentMediaUri
-      const userMsg: Message = {
-        id: Date.now().toString(), role: 'user',
-        content: caption || (isVideo ? '🎬 Video analyze பண்ணுங்க' : '📷 Photo analyze பண்ணுங்க'),
-        timestamp: new Date(),
-        sentMediaType: isVideo ? 'video' : 'image',
-        sentMediaUri: cloudUrl,
-      };
-      setMessages(prev => [...prev, userMsg]);
-      setStagingMedia(null);
-      setStagingCaption('');
-      setFileLoading(true);
-
-      // 3. Analyze with Gemini/Groq
-      const cloudUploadSucceeded = cloudUrl.startsWith('http') && cloudUrl.includes('cloudinary');
-
-      // Video + Cloudinary failed → DO NOT send huge base64 (causes "Network request failed")
-      // Show a helpful error with fix instructions instead.
-      if (isVideo && !cloudUploadSucceeded) {
-        const errDetail = cloudinaryErr || 'Unknown error';
-        setMessages(prev => [...prev, {
-          id: (Date.now()+1).toString(), role: 'assistant',
-          content: `${persona.name}: Video Cloudinary-ல் upload ஆகல 😔\n\nகாரணம்: ${errDetail}\n\n💡 திருத்தம்:\nCloudinary Dashboard → Upload Presets → my_girls_upload → Resource type = "Auto" என்று மாற்றுங்க. பிறகு மீண்டும் try பண்ணுங்க!`,
-          timestamp: new Date(),
-        }]);
-        return;
-      }
-
-      // Full video URL → server downloads → Gemini File API analyzes entire video
-      const analyzeUrl = cloudUrl;
-      const analyzeFileType: string = isVideo ? 'video' : 'image';
-      const analyzeMimeType = mimeType;
-
-      const { reply } = await analyzeFile({
-        ...(cloudUploadSucceeded
-          ? { fileUrl: analyzeUrl }         // ✅ Full Cloudinary URL — server does full video analysis
-          : { fileBase64: b64 }             // image fallback only (video blocked above)
-        ),
-        fileName,
-        fileType: analyzeFileType,
-        mimeType: analyzeMimeType,
-        userPrompt: caption || undefined,
-        characterName: persona.name,
-        characterPrompt: persona.prompt,
-        imageVideoSystemPrompt: imageVideoSystemPrompt || undefined,
-      });
-      setMessages(prev => [...prev, {
-        id: (Date.now()+1).toString(), role: 'assistant',
-        content: reply, timestamp: new Date(),
-      }]);
-    } catch (e: any) {
-      const errMsg = e?.message || 'Unknown error';
-      setMessages(prev => [...prev, {
-        id: (Date.now()+1).toString(), role: 'assistant',
-        content: `${persona.name}: File analyze பண்ண முடியல 😔\n\nError: ${errMsg}`,
-        timestamp: new Date(),
-      }]);
-    } finally {
-      setStagingUploading(false);
-      setFileLoading(false);
-    }
-  }, [stagingMedia, stagingCaption, persona]);
-
-
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || loading) return;
@@ -1264,19 +1098,16 @@ Each label: 1 sentence max.`;
       return;
     }
 
-    // ── "அனுப்பு / anuppu / anupu" + style name → show Cloudinary photo ──────
-    // Triggers ONLY when user explicitly asks to send a photo (with the send keyword)
-    // No AI generation — Cloudinary photos only
-    const SEND_TRIGGERS = ['அனுப்பு', 'anuppu', 'anupu', 'send photo', 'photo anuppu', 'photo அனுப்பு'];
-    const hasSendTrigger = SEND_TRIGGERS.some(w => text.toLowerCase().includes(w.toLowerCase()));
-    if (hasSendTrigger) {
-      const detectedStyle = detectPhotoStyle(text, PHOTO_STYLES, selectedStyleId);
-      const styleToShow = detectedStyle ?? selectedStyleId;
+    // ── Text-based photo request detection ──────────────────────────
+    // If user typed a photo request, show photo directly (same as camera button)
+    const detectedPhotoStyle = detectPhotoStyle(text, PHOTO_STYLES, selectedStyleId);
+    if (detectedPhotoStyle !== null) {
       setMessages(prev => [...prev, {
         id: Date.now().toString(), role: 'user', content: text, timestamp: new Date(),
       }]);
       setInput('');
-      setTimeout(() => handleShowGalleryInChat(styleToShow), 50);
+      // Slight delay so user message renders first
+      setTimeout(() => handleShowGalleryInChat(detectedPhotoStyle), 50);
       return;
     }
 
@@ -1313,9 +1144,6 @@ Each label: 1 sentence max.`;
         ? `\n\n**User பத்தி தகவல்:**${userName ? ` User பெயர் "${userName}".` : ''}${userBehaviour ? ` Personality: ${userBehaviour}` : ''}${modeUserBeh ? `\nஇந்த mode-ல் User எப்படி பேசுவாரு: ${modeUserBeh}` : ''}${userBodyDesc ? `\nUser-ஓட தோற்றம்/உருவம்: ${userBodyDesc}` : ''} — இதை மனசுல வச்சு respond பண்ணு.`
         : '';
 
-
-      // ── Identity rule: user is always the user, never another character ──
-      const identityContext = `\n\n**[Identity Rule — ALWAYS FOLLOW]:** உன்னிடம் chat பண்றவர் USER மட்டும். User ஒரு character-ஓட பெயரை சொன்னால் (உதா: "கிருத்திகா சொன்னாள்", "ப்ரியா கேட்கிறாள்"), அது USER அந்த character பத்தி பேசுகிறார் — அந்த character பேசுவதில்லை. USER message எப்பவும் USER மட்டுமே அனுப்புவார் — வேற character-ஆ நினைக்காதே. இதை எப்பவும் மனசுல வச்சு respond பண்ணு.`;
       // ── Image 1: main character photo + rules (ALWAYS included) ──
       // ── Image 2: normalAvatarUri (normal mode photo) ──
       // ── Image 3: presanaAvatarUri (presana mode photo) ──
@@ -1340,17 +1168,13 @@ Each label: 1 sentence max.`;
         // Avatar profiles (Qwen2-VL/Florence-2/LLaVA analyzed — mode-aware)
         if (Object.keys(avatarDescriptions).length > 0) {
           lines.push('\n**[Avatar Profiles — AI-Analyzed Appearance & Personality:]:**');
-          // Character profiles — mode-specific first, then fallback to any available
+          // Character profiles — show mode-specific one first
           if (moodMode === 'presana' && avatarDescriptions.presana)
             lines.push('Character Presana Mode Profile: ' + avatarDescriptions.presana);
           else if (moodMode === 'normal' && avatarDescriptions.normal)
             lines.push('Character Normal Mode Profile: ' + avatarDescriptions.normal);
           else if (avatarDescriptions.main)
             lines.push('Character Profile: ' + avatarDescriptions.main);
-          else if (avatarDescriptions.presana)
-            lines.push('Character Profile: ' + avatarDescriptions.presana);
-          else if (avatarDescriptions.normal)
-            lines.push('Character Profile: ' + avatarDescriptions.normal);
           // User profiles — show mode-specific one
           const activeUserProfile = moodMode === 'presana'
             ? (avatarDescriptions.userPrasana || avatarDescriptions.user)
@@ -1404,7 +1228,7 @@ Each label: 1 sentence max.`;
         ? `\n\n**[User-ஓட personal details — எப்பவும் நினைவில் வச்சு பேசு]:**\n${kiruthikaUserDetails.trim()}`
         : '';
       const effectivePrompt = persona?.prompt
-        ? persona.prompt + charContext + getFamilyContext(persona.id) + imageContext + moodOverride + dialectOverride + userContext + identityContext + avatarContext + kiruthikaContext
+        ? persona.prompt + charContext + getFamilyContext(persona.id) + imageContext + moodOverride + dialectOverride + userContext + avatarContext + kiruthikaContext
         : persona?.prompt;
 
       let reply: string;
@@ -1471,13 +1295,61 @@ Each label: 1 sentence max.`;
     if (!persona) return;
     setShowGenModal(false);
     setSelectedStyleId(styleId);
-    const photos = await getStylePhotos(persona.id, styleId);
+
+    // 1. Try AsyncStorage cache first (instant)
+    let photos = await getStylePhotos(persona.id, styleId);
+    const styleLabel = PHOTO_STYLES.find(s => s.id === styleId)?.label ?? styleId;
+
+    // 2. Cache empty (reinstall / first run) → rebuild from Cloudinary before generating
     if (photos.length === 0) {
-      const styleLabel = PHOTO_STYLES.find(s => s.id === styleId)?.label ?? styleId;
-      Alert.alert('Photos இல்லை 📷', `${persona.name}-ஓட "${styleLabel}" photos Cloudinary-ல் இல்லை.\n\nCloudinary-ல் photos சேர்த்த பிறகு இங்கே தெரியும்.`);
+      const folder = `my-girls/${persona.id}/${styleId}`;
+
+      // Show "fetching from cloud" message while waiting
+      const fetchingId = Date.now().toString();
+      setMessages(prev => [...prev, {
+        id: fetchingId, role: 'assistant',
+        content: `☁️ "${styleLabel}" photos cloud-ல் தேடுகிறேன்...`,
+        timestamp: new Date(),
+      }]);
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+
+      let cloudFetchError = false;
+      try {
+        const cloudImgs = await listCloudinaryImages(folder);
+        if (cloudImgs.length > 0) {
+          photos = cloudImgs.map(i => ({ url: i.url, public_id: i.public_id }));
+          // Rebuild local cache so next tap is instant
+          for (const p of photos) {
+            await addStylePhoto(persona.id, styleId, p);
+          }
+        }
+      } catch {
+        // API call failed (server sleeping or network error) — do NOT auto-generate
+        cloudFetchError = true;
+      }
+
+      // Remove the "fetching" placeholder message
+      setMessages(prev => prev.filter(m => m.id !== fetchingId));
+
+      // Server error → show retry option instead of auto-generating
+      if (cloudFetchError) {
+        const errId = Date.now().toString();
+        setMessages(prev => [...prev, {
+          id: errId, role: 'assistant',
+          content: `⚠️ Server wake ஆகுது (30-60 sec).\n\n"📷 ${styleLabel}" என்று மீண்டும் தட்டினால் photos கிடைக்கும்.\n\nல் புதிய photo generate வேண்டுமா? "Generate" என்று type பண்ணுங்க.`,
+          timestamp: new Date(),
+        }]);
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
+        return;
+      }
+    }
+
+    // 3. Nothing in cache OR cloud (truly empty folder) → generate new photo
+    if (photos.length === 0) {
+      handleGeneratePhoto(styleId);
       return;
     }
-    const styleLabel = PHOTO_STYLES.find(s => s.id === styleId)?.label ?? styleId;
+
     const idx = await getNextPhotoIdx(persona.id, styleId, photos.length);
     const photo = photos[idx];
     const photoMsg: Message = {
@@ -1680,7 +1552,6 @@ Each label: 1 sentence max.`;
       const { imageToPrompt: _itp } = await import('../services/api');
       const _prompt = await _itp(imageUrl);
       setPromptText(_prompt || '');
-      setGenPrompt(_prompt || '');  // Auto-fill Generate box
     } catch (err: any) {
       setPromptText('❌ ' + (err.message || 'Prompt generate ஆகவில்லை. மீண்டும் try பண்ணுங்க.'));
     }
@@ -1776,7 +1647,20 @@ Each label: 1 sentence max.`;
               : [styles.aiBubble,  { backgroundColor: aiBubbleBg }],
           ]}
         >
-          {item.imageLoading ? (
+          {item.sentMediaType === 'video' ? (
+            <View>
+              <View style={{ width: 200, height: 130, backgroundColor: '#000', borderRadius: 10, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#333', marginBottom: 6 }}>
+                <Text style={{ color: '#E53935', fontSize: 38 }}>🎥</Text>
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 4 }}>Video Sent</Text>
+              </View>
+              <Text selectable style={[styles.msgText, { color: msgTextColor }]}>{item.content}</Text>
+            </View>
+          ) : item.sentMediaType === 'image' && item.sentMediaUri ? (
+            <View>
+              <Image source={{ uri: item.sentMediaUri }} style={[styles.generatedImg, { opacity: 0.9 }]} resizeMode="cover" />
+              <Text selectable style={[styles.msgText, { color: msgTextColor, marginTop: 4 }]}>{item.content}</Text>
+            </View>
+          ) : item.imageLoading ? (
             <View style={styles.imgLoadingWrap}>
               <ActivityIndicator color="#075E54" size="small" />
               <Text selectable style={[styles.msgText, { color: msgTextColor }]}>{item.content}</Text>
@@ -1797,59 +1681,17 @@ Each label: 1 sentence max.`;
                 </TouchableOpacity>
               </View>
             </View>
-          ) : item.sentMediaType === 'video' ? (
-            <View>
-              <TouchableOpacity
-                activeOpacity={0.85}
-                onPress={() => item.sentMediaUri && setFullViewVideo(item.sentMediaUri)}
-                style={{ width: 210, height: 128, borderRadius: 12, overflow: 'hidden', backgroundColor: '#0d0d0d', borderWidth: 1, borderColor: '#444' }}
-              >
-                {item.sentMediaUri ? (
-                  <Image
-                    source={{ uri: cloudVideoThumbnail(item.sentMediaUri) }}
-                    style={{ width: '100%', height: '100%' }}
-                    resizeMode="cover"
-                    defaultSource={require('../assets/images/icon.png')}
-                  />
-                ) : null}
-                <View style={{ ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.38)' }}>
-                  <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(233,30,140,0.85)', justifyContent: 'center', alignItems: 'center' }}>
-                    <Text style={{ color: '#fff', fontSize: 18, marginLeft: 3 }}>▶</Text>
-                  </View>
-                  <Text style={{ color: '#fff', fontSize: 10, marginTop: 6, fontWeight: '600', opacity: 0.9 }}>🎬 Video</Text>
-                </View>
-              </TouchableOpacity>
-              <Text selectable style={[styles.msgText, { color: msgTextColor, marginTop: 6 }]}>{item.content}</Text>
-            </View>
-          ) : item.sentMediaType === 'image' && item.sentMediaUri ? (
-            <View>
-              <TouchableOpacity activeOpacity={0.88} onPress={() => setFullViewImg(item.sentMediaUri!)}>
-                <Image source={{ uri: item.sentMediaUri }} style={{ width: 200, height: 200, borderRadius: 10 }} resizeMode="cover" />
-              </TouchableOpacity>
-              <Text selectable style={[styles.msgText, { color: msgTextColor, marginTop: 4 }]}>{item.content}</Text>
-            </View>
           ) : (
             <Text selectable style={[styles.msgText, { color: msgTextColor }]}>{item.content}</Text>
           )}
           {item.videoUrl && (
             <View style={{ marginBottom: 6 }}>
               <TouchableOpacity
-                activeOpacity={0.85}
-                style={{ width: 230, height: 142, borderRadius: 12, overflow: 'hidden', backgroundColor: '#1a1a2e', borderWidth: 2, borderColor: '#6C63FF' }}
-                onPress={() => setFullViewVideo(item.videoUrl!)}
+                style={{ width: 220, height: 140, backgroundColor: '#1a1a2e', borderRadius: 10, justifyContent: 'center', alignItems: 'center', overflow: 'hidden', borderWidth: 2, borderColor: '#6C63FF' }}
+                onPress={() => { const { Linking } = require('react-native'); Linking.openURL(item.videoUrl!); }}
               >
-                <Image
-                  source={{ uri: cloudVideoThumbnail(item.videoUrl) }}
-                  style={{ width: '100%', height: '100%' }}
-                  resizeMode="cover"
-                  defaultSource={require('../assets/images/icon.png')}
-                />
-                <View style={{ ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.35)' }}>
-                  <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(108,99,255,0.88)', justifyContent: 'center', alignItems: 'center' }}>
-                    <Text style={{ color: '#fff', fontSize: 22, marginLeft: 4 }}>▶</Text>
-                  </View>
-                  <Text style={{ color: '#ddd', fontSize: 11, marginTop: 8, fontWeight: '600' }}>🎬 Tap to play</Text>
-                </View>
+                <Text style={{ fontSize: 48 }}>▶️</Text>
+                <Text style={{ color: '#aaa', fontSize: 11, marginTop: 6 }}>🎬 Tap to play video</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={{ marginTop: 4, backgroundColor: 'rgba(198,40,40,0.12)', borderRadius: 8, paddingVertical: 5, paddingHorizontal: 10, alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', gap: 4 }}
@@ -2128,43 +1970,70 @@ Each label: 1 sentence max.`;
                   const isSelected = style.id === selectedStyleId;
                   const isCustom = style.id.startsWith('custom_');
                   return (
-                    <View key={style.id} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <TouchableOpacity
-                        style={[styles.styleRowFull, isSelected && styles.styleRowSelected, { flex: 1 }]}
-                        onPress={() => {
-                          setSelectedStyleId(style.id);
-                          setShowGeneratePanel(false);
-                          handleShowGalleryInChat(style.id);
-                        }}
-                      >
-                        <View style={[styles.styleRadio, isSelected && styles.styleRadioSelected]}>
-                          {isSelected && <View style={styles.styleRadioDot} />}
-                        </View>
-                        <Text style={[styles.styleRowFullLabel, isSelected && styles.styleLabelSelected]} numberOfLines={1}>
-                          {isCustom ? '★ ' : ''}{style.label}
-                        </Text>
-                        <Text style={styles.styleRowArrow}>›</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => Alert.alert(
-                          `🗑 "${style.label}" Delete?`,
-                          'இந்த style-ஐ list-ல் இருந்து நீக்கணுமா?',
-                          [
-                            { text: 'Cancel', style: 'cancel' },
-                            { text: 'Delete ✓', style: 'destructive', onPress: () =>
-                              isCustom ? removeCustomStyle(style.id) : removeBuiltinStyle(style.id)
-                            },
-                          ]
-                        )}
-                        style={{ paddingHorizontal: 12, paddingVertical: 14 }}
-                      >
-                        <Text style={{ fontSize: 18, color: '#e53935' }}>🗑️</Text>
-                      </TouchableOpacity>
-                    </View>
+                    <TouchableOpacity
+                      key={style.id}
+                      style={[styles.styleRowFull, isSelected && styles.styleRowSelected]}
+                      onPress={() => {
+                        setSelectedStyleId(style.id);
+                        setShowGeneratePanel(false);
+                        handleShowGalleryInChat(style.id);
+                      }}
+                      onLongPress={() => {
+                        if (isCustom) {
+                          Alert.alert(
+                            'Delete custom style?',
+                            `"${style.label}" நீக்கணுமா?`,
+                            [
+                              { text: 'Cancel', style: 'cancel' },
+                              { text: 'Delete', style: 'destructive', onPress: () => removeCustomStyle(style.id) },
+                            ],
+                          );
+                        }
+                      }}
+                    >
+                      <View style={[styles.styleRadio, isSelected && styles.styleRadioSelected]}>
+                        {isSelected && <View style={styles.styleRadioDot} />}
+                      </View>
+                      <Text style={[styles.styleRowFullLabel, isSelected && styles.styleLabelSelected]} numberOfLines={1}>
+                        {isCustom ? '★ ' : ''}{style.label}
+                      </Text>
+                      <Text style={styles.styleRowArrow}>›</Text>
+                    </TouchableOpacity>
                   );
                 })}
               </ScrollView>
 
+              {/* ── Generate panel (collapsible) ── */}
+              <View style={styles.generateSection}>
+                <TouchableOpacity
+                  style={styles.generateToggle}
+                  onPress={() => setShowGeneratePanel(p => !p)}
+                  disabled={generatingPhoto}
+                >
+                  <Text style={styles.generateToggleTxt}>
+                    {generatingPhoto ? '⏳ Generating...' : (showGeneratePanel ? '▲ AI Generate மூடு' : '🎨 AI Generate (New Photo)')}
+                  </Text>
+                </TouchableOpacity>
+
+                {showGeneratePanel && !generatingPhoto && (
+                  <View style={styles.generateInner}>
+                    <View style={styles.hfBadge}>
+                      <Text style={styles.hfBadgeTxt}>🤗 HuggingFace Token: Settings-ல் save பண்ணினா HF AI use ஆகும்</Text>
+                    </View>
+                    <TextInput
+                      style={styles.genInput}
+                      value={genPrompt}
+                      onChangeText={setGenPrompt}
+                      placeholder="e.g. sitting on bed, smiling..."
+                      placeholderTextColor="#aaa"
+                      multiline
+                    />
+                    <TouchableOpacity style={styles.genBtn} onPress={handleGeneratePhoto}>
+                      <Text style={styles.genBtnText}>🎨 Generate (1–3 min)</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
 
             </View>
           </TouchableOpacity>
@@ -2317,11 +2186,19 @@ Each label: 1 sentence max.`;
         </View>
       </Modal>
 
-      <MediaImageViewer
-        uri={fullViewImg}
-        onClose={() => setFullViewImg(null)}
-        onPrompt={(u) => { setFullViewImg(null); getPrompt(u); }}
-      />
+      <Modal visible={!!fullViewImg} transparent={false} animationType="fade" onRequestClose={() => setFullViewImg(null)}>
+        <View style={styles.viewerBg}>
+          <TouchableOpacity style={styles.viewerClose} onPress={() => setFullViewImg(null)}>
+            <Text style={styles.viewerCloseText}>✕</Text>
+          </TouchableOpacity>
+          {fullViewImg && <Image source={{ uri: fullViewImg }} style={styles.viewerImg} resizeMode="contain" />}
+          {fullViewImg && (
+            <TouchableOpacity style={styles.viewerPromptBtn} onPress={() => getPrompt(fullViewImg)}>
+              <Text style={styles.viewerPromptTxt}>📋 Prompt எடு</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </Modal>
 
       {/* ── Image → Prompt Result Modal ── */}
       <Modal visible={showPromptModal} transparent animationType="slide" onRequestClose={() => setShowPromptModal(false)}>
@@ -2658,91 +2535,6 @@ Each label: 1 sentence max.`;
           </TouchableOpacity>
         </Modal>
       )}
-
-      {/* ── Staging Preview Modal (Photo/Video before send) ── */}
-      <Modal
-        visible={!!stagingMedia}
-        transparent
-        animationType="slide"
-        onRequestClose={() => { setStagingMedia(null); setStagingCaption(''); }}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' }}
-          keyboardVerticalOffset={0}
-        >
-          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 32 }}>
-            {/* Header */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: '#eee' }}>
-              <Text style={{ fontSize: 17, fontWeight: '700', color: '#111' }}>
-                {stagingMedia?.isVideo ? '🎬 Video Preview' : '📷 Photo Preview'}
-              </Text>
-              <TouchableOpacity onPress={() => { setStagingMedia(null); setStagingCaption(''); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Text style={{ fontSize: 24, color: '#888' }}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Preview */}
-            <View style={{ alignItems: 'center', paddingTop: 16, paddingHorizontal: 16 }}>
-              {stagingMedia?.isVideo ? (
-                <View style={{ width: '100%', height: 180, backgroundColor: '#0d0d0d', borderRadius: 16, justifyContent: 'center', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 56 }}>🎬</Text>
-                  <Text style={{ color: '#bbb', fontSize: 13, marginTop: 8 }}>{stagingMedia.fileName}</Text>
-                </View>
-              ) : stagingMedia?.uri ? (
-                <Image
-                  source={{ uri: stagingMedia.uri }}
-                  style={{ width: '100%', height: 240, borderRadius: 16 }}
-                  resizeMode="cover"
-                />
-              ) : null}
-            </View>
-
-            {/* Caption input */}
-            <View style={{ marginHorizontal: 16, marginTop: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <TextInput
-                value={stagingCaption}
-                onChangeText={setStagingCaption}
-                placeholder="Caption தமிழ்ல type பண்ணுங்க (optional)…"
-                placeholderTextColor="#aaa"
-                style={{
-                  flex: 1, borderWidth: 1.5, borderColor: '#ddd', borderRadius: 22,
-                  paddingHorizontal: 16, paddingVertical: 12, fontSize: 15, color: '#111',
-                  backgroundColor: '#f8f8f8',
-                }}
-                multiline={false}
-                maxLength={200}
-                editable={!stagingUploading}
-              />
-              <TouchableOpacity
-                onPress={sendStagedMedia}
-                disabled={stagingUploading}
-                style={{
-                  backgroundColor: stagingUploading ? '#aaa' : '#25D366',
-                  borderRadius: 22, paddingVertical: 12, paddingHorizontal: 20,
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                }}
-              >
-                {stagingUploading
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>Send ➤</Text>
-                }
-              </TouchableOpacity>
-            </View>
-            {stagingUploading && (
-              <Text style={{ textAlign: 'center', color: '#075E54', fontSize: 12, marginTop: 8, fontWeight: '600' }}>
-                ☁️ Cloudinary upload → AI analyze பண்றோம்…
-              </Text>
-            )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      <MediaVideoPlayer
-        uri={fullViewVideo}
-        onClose={() => setFullViewVideo(null)}
-      />
-
     </SafeAreaView>
   );
 }
