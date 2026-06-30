@@ -1,12 +1,68 @@
 services:
   - type: web
-    name: api-server
+    name: my-girls-api
     runtime: node
-    region: singapore
-    buildCommand: bash render-build.sh
+    rootDir: .
+    buildCommand: npm install -g pnpm@9 && pnpm install --frozen-lockfile && pnpm --filter @workspace/api-server run build
     startCommand: node --enable-source-maps artifacts/api-server/dist/index.mjs
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
+
+      # ── Gemini keys (Gemini_key_1 … Gemini_key_13) ──────────────
+      # Add each key in the Render dashboard → Environment tab
+      - key: Gemini_key_1
+        sync: false
+      - key: Gemini_key_2
+        sync: false
+      - key: Gemini_key_3
+        sync: false
+      - key: Gemini_key_4
+        sync: false
+      - key: Gemini_key_5
+        sync: false
+      - key: Gemini_key_6
+        sync: false
+      - key: Gemini_key_7
+        sync: false
+      - key: Gemini_key_8
+        sync: false
+      - key: Gemini_key_9
+        sync: false
+      - key: Gemini_key_10
+        sync: false
+      - key: Gemini_key_11
+        sync: false
+      - key: Gemini_key_12
+        sync: false
+      - key: Gemini_key_13
+        sync: false
+
+      # ── Groq ─────────────────────────────────────────────────────
+      - key: Groq_key
+        sync: false
+
+      # ── Cloudinary ───────────────────────────────────────────────
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+      # ── fal.ai (image generation) ────────────────────────────────
+      - key: FAL_KEY
+        sync: false
+
+      # ── OpenRouter (optional) ────────────────────────────────────
+      - key: OPENROUTER_API_KEY
+        sync: false
+
+      # ── Session secret ───────────────────────────────────────────
+      - key: SESSION_SECRET
+        sync: false
+
+      # ── Database (optional — only if DB features are used) ───────
       - key: DATABASE_URL
         sync: false
