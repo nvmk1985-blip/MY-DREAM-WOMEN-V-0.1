@@ -1,215 +1,56 @@
-name: Build APK
+name: Build Android APK
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'artifacts/tamil-ai-chat/**'
+      - '.github/workflows/build-apk.yml'
   workflow_dispatch:
-
-permissions:
-  contents: write
+    inputs:
+      profile:
+        description: 'EAS build profile'
+        required: false
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - preview
 
 jobs:
   build:
+    name: EAS APK Build
     runs-on: ubuntu-latest
-    timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '20'
 
-      - uses: actions/setup-java@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          version: 9
 
-      - name: Setup Android SDK
-        run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          if [ -f "$SDKMANAGER" ]; then
-            yes | $SDKMANAGER "platform-tools" "build-tools;34.0.0" "platforms;android-34" 2>/dev/null || true
-          else
-            SDKMANAGER2=$(find $ANDROID_HOME/cmdline-tools -name sdkmanager 2>/dev/null | head -1)
-            if [ -n "$SDKMANAGER2" ]; then
-              yes | $SDKMANAGER2 "platform-tools" "build-tools;34.0.0" "platforms;android-34" 2>/dev/null || true
-            fi
-          fi
-          echo "Android SDK setup complete"
+      - name: Install dependencies (workspace root)
+        run: pnpm install --frozen-lockfile
 
-      - name: Install ImageMagick
-        run: |
-          sudo apt-get install -y imagemagick
-          convert --version | head -2
+      - name: Install EAS CLI
+        run: pnpm add -g eas-cli
 
-      - name: Install pnpm
-        run: npm install -g pnpm@10
-
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile --ignore-scripts
-
-      - name: Accept Android SDK licenses
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
-
-      - name: Set versionCode from run number
-        run: |
-          VERSION_CODE=${{ github.run_number }}
-          node -e "
-            const fs = require('fs');
-            const p = 'artifacts/tamil-ai-chat/app.json';
-            const j = JSON.parse(fs.readFileSync(p,'utf8'));
-            j.expo.android.versionCode = $VERSION_CODE;
-            fs.writeFileSync(p, JSON.stringify(j, null, 2));
-            console.log('versionCode:', j.expo.android.versionCode);
-          "
-
-      - name: Fetch latest app icon from Cloudinary
-        run: |
-          ICON="artifacts/tamil-ai-chat/assets/images/icon.png"
-          CLOUD="dazmrxsyc"
-
-          echo "Checking Cloudinary for latest app icon..."
-          RESP=$(curl -sf "https://res.cloudinary.com/${CLOUD}/image/list/my-girls:app-icon.json" 2>/dev/null || echo "")
-
-          ICON_URL=""
-          if [ -n "$RESP" ]; then
-            ICON_URL=$(node -e "
-              try {
-                const d = JSON.parse(process.argv[1]);
-                const imgs = d.resources || [];
-                if (imgs.length === 0) { process.exit(1); }
-                imgs.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-                const pid = imgs[0].public_id;
-                console.log('https://res.cloudinary.com/dazmrxsyc/image/upload/f_png,w_1024,h_1024,c_fill/' + pid + '.png');
-              } catch(e) { process.exit(1); }
-            " "$RESP" 2>/dev/null || echo "")
-          fi
-
-          if [ -n "$ICON_URL" ]; then
-            echo "Downloading icon from Cloudinary: $ICON_URL"
-            curl -fsSL "$ICON_URL" -o "$ICON"
-            SIZE=$(stat -c%s "$ICON" 2>/dev/null || echo 0)
-            echo "Custom icon downloaded: $SIZE bytes"
-          else
-            echo "No custom icon in Cloudinary — using default icon.png"
-          fi
-
-          SIZE=$(stat -c%s "$ICON")
-          SHA=$(sha256sum "$ICON" | awk '{print $1}')
-          echo "icon.png: $SIZE bytes | sha256=$SHA"
-
-      - name: Expo Prebuild
+      - name: Build APK via EAS
         working-directory: artifacts/tamil-ai-chat
+        run: eas build --platform android --profile ${{ github.event.inputs.profile || 'production' }} --non-interactive --output ./build.apk
         env:
-          EXPO_PUBLIC_API_URL: https://my-dream-women.onrender.com
-          EXPO_PUBLIC_BUILD_NUMBER: ${{ github.run_number }}
-          EXPO_NO_TELEMETRY: 1
-          CI: 1
-        run: |
-          yes | npx expo prebuild --platform android --clean 2>&1 || true
-          if [ ! -d android ]; then echo "android/ not created"; exit 1; fi
-          echo "android/ created"
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Inject custom icons via ImageMagick
-        run: |
-          ICON="artifacts/tamil-ai-chat/assets/images/icon.png"
-          RES="artifacts/tamil-ai-chat/android/app/src/main/res"
-
-          find "$RES" -name "ic_launcher*.webp" -delete
-          find "$RES" -name "ic_launcher*.png" -delete
-
-          for FOLDER_SIZE in \
-            "mipmap-mdpi:48:108" \
-            "mipmap-hdpi:72:162" \
-            "mipmap-xhdpi:96:216" \
-            "mipmap-xxhdpi:144:324" \
-            "mipmap-xxxhdpi:192:432"; do
-
-            FOLDER="${FOLDER_SIZE%%:*}"
-            REST="${FOLDER_SIZE#*:}"
-            LAUNCHER_PX="${REST%%:*}"
-            FOREGROUND_PX="${REST##*:}"
-            DIR="$RES/$FOLDER"
-            mkdir -p "$DIR"
-
-            convert "$ICON" -resize "${LAUNCHER_PX}x${LAUNCHER_PX}!" \
-              -define png:compression-level=9 "$DIR/ic_launcher.png"
-            convert "$ICON" -resize "${LAUNCHER_PX}x${LAUNCHER_PX}!" \
-              -define png:compression-level=9 "$DIR/ic_launcher_round.png"
-            convert "$ICON" -resize "${FOREGROUND_PX}x${FOREGROUND_PX}!" \
-              -define png:compression-level=9 "$DIR/ic_launcher_foreground.png"
-
-            echo "$FOLDER done"
-          done
-
-      - name: Bundle JS with expo export:embed
-        working-directory: artifacts/tamil-ai-chat
-        env:
-          EXPO_PUBLIC_API_URL: https://my-dream-women.onrender.com
-          EXPO_NO_TELEMETRY: 1
-          NODE_ENV: production
-        run: |
-          mkdir -p android/app/src/main/assets
-          mkdir -p android/app/src/main/res
-          npx expo export:embed \
-            --platform android \
-            --bundle-output android/app/src/main/assets/index.android.bundle \
-            --assets-dest android/app/src/main/res \
-            --dev false 2>&1
-          BUNDLE=android/app/src/main/assets/index.android.bundle
-          if [ -f "$BUNDLE" ]; then echo "Bundle: $(stat -c%s $BUNDLE) bytes"
-          else echo "Bundle not created"; exit 1; fi
-
-      - name: Build APK
-        working-directory: artifacts/tamil-ai-chat/android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug -PbundleInDebug=true --no-daemon 2>&1 | tee /tmp/gradle.log
-          find . -name "*.apk" | grep -v node_modules | while read f; do
-            echo "$(stat -c%s "$f") bytes — $f"
-          done | sort -rn
-
-      - name: Locate, validate and copy APK
-        run: |
-          APK=$(find artifacts/tamil-ai-chat/android -name "*.apk" 2>/dev/null \
-            | grep -v node_modules \
-            | while read f; do echo "$(stat -c%s "$f" 2>/dev/null||echo 0) $f"; done \
-            | sort -rn | awk 'NR==1{print $2}')
-          SIZE=$(stat -c%s "$APK" 2>/dev/null || echo 0)
-          if [ -z "$APK" ] || [ "$SIZE" -lt 1000000 ]; then
-            echo "APK invalid ($SIZE bytes)"; tail -80 /tmp/gradle.log; exit 1
-          fi
-          APK_NAME="my-dream-women-v${{ github.run_number }}.apk"
-          cp "$APK" "$APK_NAME"
-          echo "APK_NAME=$APK_NAME" >> $GITHUB_ENV
-
-      - name: Publish APK via GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="v${{ github.run_number }}"
-          gh release delete "$TAG" --yes --cleanup-tag \
-            --repo ${{ github.repository }} 2>/dev/null || true
-          sleep 2
-          gh release create "$TAG" "$APK_NAME" \
-            --title "My Dream Women — Build ${{ github.run_number }}" \
-            --notes "Build ${{ github.run_number }} — image+video analysis fix" \
-            --latest \
-            --repo ${{ github.repository }}
-          echo "https://github.com/${{ github.repository }}/releases/download/$TAG/$APK_NAME"
-
-      - name: Trigger Render Redeploy
-        run: |
-          echo "Triggering Render API server redeploy..."
-          RESP=$(curl -s -o /tmp/render_resp.json -w "%{http_code}" \
-            "https://api.render.com/deploy/srv-d8oe990k1i2s738h0uhg?key=${{ secrets.RENDER_KEY }}")
-          echo "Render deploy status: $RESP"
-          cat /tmp/render_resp.json || true
-          echo "Render redeploy triggered — server will update in ~2 min"
-
-      - name: Upload build log on failure
-        if: failure()
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
-          path: /tmp/gradle.log
-          retention-days: 7
+          name: my-girls-${{ github.event.inputs.profile || 'production' }}-${{ github.run_number }}.apk
+          path: artifacts/tamil-ai-chat/build.apk
+          retention-days: 30
+          if-no-files-found: warn
