@@ -421,7 +421,7 @@ export default function KeysScreen() {
     const label = newLabel.trim();
     const site = newSite.trim() || 'custom';
     if (!label) { Alert.alert('பிழை', 'Key பெயர் உள்ளிடுங்க'); return; }
-    const id = 'custom_' + Date.now();
+    const id = 'custom_' + name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
     const entry: ApiKeyEntry = { id, label, site, value: '', enabled: false, expanded: false, status: 'idle' };
     setKeys(prev => [...prev, entry]);
     setAddModal(false); setNewLabel(''); setNewSite('');
