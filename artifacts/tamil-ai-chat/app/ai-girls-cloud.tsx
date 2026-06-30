@@ -302,7 +302,7 @@ export default function AIGirlsCloudScreen() {
 
     if (depth === 0) {
       // Add custom character folder
-      const id = name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
+      const id = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
       const color = FOLDER_COLORS[Math.floor(Math.random() * FOLDER_COLORS.length)];
       const newChar = { id, name, color, letter: name.charAt(0).toUpperCase() };
       const updated = [...customChars, newChar];
@@ -310,7 +310,7 @@ export default function AIGirlsCloudScreen() {
       await AsyncStorage.setItem(CUSTOM_CHARS_KEY, JSON.stringify(updated));
     } else if (depth === 1) {
       // Add custom style folder
-      const id = name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
+      const id = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
       const newStyle = { id, label: name };
       const updated = [...customStyles, newStyle];
       setCustomStyles(updated);
