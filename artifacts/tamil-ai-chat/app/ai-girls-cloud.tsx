@@ -97,10 +97,15 @@ export default function AIGirlsCloudScreen() {
         // Reinstall detected: cache empty — auto-rebuild character list from Cloudinary
         try {
           const folders = await listCloudinarySubfolders('my-girls');
-          const customFolders = folders.filter((f: string) => f.startsWith('custom_'));
+          // Exclude built-in persona IDs and known non-char folders
+          const builtInIds = new Set(
+            ALL_PERSONAS.filter(p => p.gender === 'female').map(p => p.id)
+          );
+          builtInIds.add('videos');
+          const customFolders = folders.filter((f: string) => !builtInIds.has(f));
           if (customFolders.length > 0) {
             const recovered = customFolders.map((folderId: string, i: number) => {
-              const namePart = folderId.replace('custom_', '').replace(/-/g, ' ');
+              const namePart = folderId.replace(/-/g, ' ');
               const name = namePart.charAt(0).toUpperCase() + namePart.slice(1);
               return { id: folderId, name, color: CHAR_COLORS[i % CHAR_COLORS.length], letter: name.charAt(0).toUpperCase() };
             });
@@ -326,7 +331,8 @@ export default function AIGirlsCloudScreen() {
 
     if (depth === 0) {
       // Add custom character folder
-      const id = name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
+      // ID must be stable — never use Date.now() — Cloudinary path = my-girls/${id}/...
+      const id = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'folder';
       const color = FOLDER_COLORS[Math.floor(Math.random() * FOLDER_COLORS.length)];
       const newChar = { id, name, color, letter: name.charAt(0).toUpperCase() };
       const updated = [...customChars, newChar];
@@ -334,7 +340,8 @@ export default function AIGirlsCloudScreen() {
       await AsyncStorage.setItem(CUSTOM_CHARS_KEY, JSON.stringify(updated));
     } else if (depth === 1) {
       // Add custom style folder
-      const id = name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
+      // ID must be stable — never use Date.now()
+      const id = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'style';
       const newStyle = { id, label: name };
       const updated = [...customStyles, newStyle];
       setCustomStyles(updated);
