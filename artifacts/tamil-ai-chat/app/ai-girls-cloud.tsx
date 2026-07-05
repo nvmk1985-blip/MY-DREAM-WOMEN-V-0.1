@@ -12,6 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { ALL_PERSONAS } from '../constants/personas';
 import {
   listCloudinaryImages,
+  listCloudinarySubfolders,
   uploadToCloudinary,
   uploadUriToCloudinary,
   deleteFromCloudinary,
@@ -85,10 +86,33 @@ export default function AIGirlsCloudScreen() {
   const [uploadTotal, setUploadTotal] = useState(0);
 
 
-  // Load custom folders from storage
+  // Load custom folders from storage — auto-sync from Cloudinary if cache is empty (e.g. after reinstall)
   useEffect(() => {
-    AsyncStorage.getItem(CUSTOM_CHARS_KEY).then(v => { if (v) setCustomChars(JSON.parse(v)); });
-    AsyncStorage.getItem(CUSTOM_STYLES_KEY).then(v => { if (v) setCustomStyles(JSON.parse(v)); });
+    const CHAR_COLORS = ['#E91E8C', '#9C27B0', '#3F51B5', '#00BCD4', '#4CAF50', '#FF5722', '#FF9800', '#795548'];
+    const init = async () => {
+      const charsRaw = await AsyncStorage.getItem(CUSTOM_CHARS_KEY).catch(() => null);
+      if (charsRaw) {
+        setCustomChars(JSON.parse(charsRaw));
+      } else {
+        // Reinstall detected: cache empty — auto-rebuild character list from Cloudinary
+        try {
+          const folders = await listCloudinarySubfolders('my-girls');
+          const customFolders = folders.filter((f: string) => f.startsWith('custom_'));
+          if (customFolders.length > 0) {
+            const recovered = customFolders.map((folderId: string, i: number) => {
+              const namePart = folderId.replace('custom_', '').replace(/-/g, ' ');
+              const name = namePart.charAt(0).toUpperCase() + namePart.slice(1);
+              return { id: folderId, name, color: CHAR_COLORS[i % CHAR_COLORS.length], letter: name.charAt(0).toUpperCase() };
+            });
+            setCustomChars(recovered);
+            await AsyncStorage.setItem(CUSTOM_CHARS_KEY, JSON.stringify(recovered));
+          }
+        } catch { /* silent — will show empty list */ }
+      }
+      const stylesRaw = await AsyncStorage.getItem(CUSTOM_STYLES_KEY).catch(() => null);
+      if (stylesRaw) setCustomStyles(JSON.parse(stylesRaw));
+    };
+    init();
   }, []);
 
   // Base personas
@@ -341,8 +365,12 @@ export default function AIGirlsCloudScreen() {
           setPhotos(merged);
           // Update cache with merged result
           await AsyncStorage.setItem(key, JSON.stringify(merged));
+        } else if (local.length === 0) {
+          // Both cloud and cache empty — folder genuinely empty (after reinstall or deleted)
+          await AsyncStorage.removeItem(key);
+          setPhotos([]);
         }
-        // If cloud returns empty, keep showing local cache
+        // If cloud returns empty but local cache has items, keep showing local cache
       } catch {
         // Cloudinary list failed — local cache is still shown
       }
