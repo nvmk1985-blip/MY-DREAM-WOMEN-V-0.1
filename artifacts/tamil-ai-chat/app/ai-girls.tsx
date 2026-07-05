@@ -226,9 +226,13 @@ export default function AIGirlsScreen() {
 
     // Folder name = character name (lowercase, spaces → hyphens)
     const rawFolder = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
-    const folderName = rawFolder || `char-${Date.now().toString(36)}`;
+    // folderName must be stable — never use Date.now() here
+    // (after reinstall, the same name must produce the same folder path in Cloudinary)
+    const folderName = rawFolder || `char-${name.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 8) || 'custom'}`;
 
-    const id = 'custom_' + folderName + '_' + Date.now().toString(36);
+    // ID must be permanent — no Date.now() suffix
+    // Cloudinary folder path = my-girls/${id}/... so this must never change
+    const id = 'custom_' + folderName;
     const color = FOLDER_COLORS[Math.floor(Math.random() * FOLDER_COLORS.length)];
     const letter = name.charAt(0);
 

@@ -341,8 +341,13 @@ export default function AIGirlsCloudScreen() {
           setPhotos(merged);
           // Update cache with merged result
           await AsyncStorage.setItem(key, JSON.stringify(merged));
+        } else if (local.length === 0) {
+          // Cache empty + Cloudinary empty = folder genuinely empty (e.g. after reinstall)
+          // Clear any stale cache and show empty state
+          await AsyncStorage.removeItem(key);
+          setPhotos([]);
         }
-        // If cloud returns empty, keep showing local cache
+        // If cloud returns empty but local cache has items, keep showing local cache
       } catch {
         // Cloudinary list failed — local cache is still shown
       }
