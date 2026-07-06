@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "My Girls",
+    "name": "My Dream Women",
     "slug": "tamil-ai-chat",
     "version": "1.3.0",
     "orientation": "portrait",
@@ -71,8 +71,8 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "Allow My Girls to access your photos and media files.",
-          "savePhotosPermission": "Allow My Girls to save photos and media files.",
+          "photosPermission": "Allow My Dream Women to access your photos and media files.",
+          "savePhotosPermission": "Allow My Dream Women to save photos and media files.",
           "isAccessMediaLocationEnabled": true
         }
       ]
