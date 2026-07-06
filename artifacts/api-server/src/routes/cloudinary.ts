@@ -176,10 +176,16 @@ router.get("/cloudinary/debug-detail", async (req, res) => {
   try { const r = await (cl.api as any).resources({ asset_folder: folder, max_results: 10, resource_type: "image" }); out["asset_folder_param"] = { count: r.resources?.length, ids: r.resources?.map((x:any)=>x.public_id) }; } catch(e:any){ out["asset_folder_param_err"] = e?.message; }
   // Method 4: root prefix (no folder filter)
   try { const r = await cl.api.resources({ type: "upload", resource_type: "image", prefix: "my-girls/", max_results: 10 }); out["root_prefix"] = { count: r.resources?.length, ids: r.resources?.map((x:any)=>x.public_id) }; } catch(e:any){ out["root_prefix_err"] = String(e); }
-  // Method 5: resources_by_asset_folder("Icon") — upload preset may hardcode this
-  try { const r = await (cl.api as any).resources_by_asset_folder("Icon", { max_results: 10, resource_type: "image" }); out["by_asset_folder_Icon"] = { count: r.resources?.length, ids: r.resources?.map((x:any)=>x.public_id) }; } catch(e:any){ out["by_asset_folder_Icon_err"] = String(e); }
+  // Method 5: resources_by_asset_folder("Icon") — upload preset may hardcode asset_folder=Icon
+  try {
+    const r = await (cl.api as any).resources_by_asset_folder("Icon", { max_results: 10, resource_type: "image" });
+    out["by_asset_folder_Icon"] = { count: r.resources?.length, sample: r.resources?.slice(0,3).map((x:any)=>({id:x.public_id,af:x.asset_folder,url:x.secure_url?.slice(0,80)})) };
+  } catch(e:any){ out["by_asset_folder_Icon_err"] = String(e); }
   // Method 6: list ALL resources (no filter) to see anything at all
-  try { const r = await cl.api.resources({ type: "upload", resource_type: "image", max_results: 10 }); out["all_resources"] = { count: r.resources?.length, ids: r.resources?.map((x:any)=>({id:x.public_id,af:x.asset_folder})) }; } catch(e:any){ out["all_resources_err"] = String(e); }
+  try {
+    const r = await cl.api.resources({ type: "upload", resource_type: "image", max_results: 10 });
+    out["all_resources"] = { count: r.resources?.length, sample: r.resources?.slice(0,3).map((x:any)=>({id:x.public_id,af:x.asset_folder,url:x.secure_url?.slice(0,80)})) };
+  } catch(e:any){ out["all_resources_err"] = String(e); }
   res.json(out);
 });
 
