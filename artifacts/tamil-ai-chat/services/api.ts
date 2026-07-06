@@ -418,6 +418,20 @@ export async function listCloudinaryImages(
 }
 
 
+export async function listCloudinarySubfolders(folder: string): Promise<string[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(
+      `${REPLIT_API}/api/cloudinary/subfolders?folder=${encodeURIComponent(folder)}`,
+      { signal: controller.signal },
+    );
+    if (!res.ok) return [];
+    const data = await res.json() as any;
+    return data.folders || [];
+  } catch { return []; } finally { clearTimeout(timer); }
+}
+
 export async function listCloudinaryVideos(
   characterName: string,
 ): Promise<{ url: string; public_id: string; format?: string }[]> {

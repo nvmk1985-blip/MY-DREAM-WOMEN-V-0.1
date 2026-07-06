@@ -102,6 +102,38 @@ router.get("/cloudinary/list", async (req, res) => {
   }
 });
 
+// Lists immediate sub-folder names inside a given Cloudinary folder
+router.get("/cloudinary/subfolders", async (req, res) => {
+  try {
+    const folder = (req.query["folder"] as string) || "my-girls";
+    const cl = cfg();
+    let folderNames: string[] = [];
+    // Method 1: Cloudinary sub_folders Admin API
+    try {
+      const r = await (cl.api as any).sub_folders(folder);
+      if (r?.folders?.length) {
+        folderNames = r.folders.map((f: any) => f.name ?? (f.path ?? '').split('/').pop() ?? String(f));
+      }
+    } catch {}
+    // Method 2: Fallback — extract from resource public_ids
+    if (folderNames.length === 0) {
+      try {
+        const depth = folder.split('/').length;
+        const r = await cl.api.resources({ type: "upload", resource_type: "image", prefix: folder + "/", max_results: 500 });
+        const seen = new Set<string>();
+        for (const item of r.resources || []) {
+          const parts = (item.public_id as string).split('/');
+          if (parts.length > depth) seen.add(parts[depth]);
+        }
+        folderNames = [...seen];
+      } catch {}
+    }
+    res.json({ folders: folderNames });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Subfolders failed" });
+  }
+});
+
 router.get("/cloudinary/debug-all", async (req, res) => {
   try {
     const cl = cfg();
