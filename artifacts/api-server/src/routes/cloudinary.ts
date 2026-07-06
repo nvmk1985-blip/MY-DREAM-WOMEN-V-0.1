@@ -176,16 +176,21 @@ router.get("/cloudinary/debug-detail", async (req, res) => {
   try { const r = await (cl.api as any).resources({ asset_folder: folder, max_results: 10, resource_type: "image" }); out["asset_folder_param"] = { count: r.resources?.length, ids: r.resources?.map((x:any)=>x.public_id) }; } catch(e:any){ out["asset_folder_param_err"] = e?.message; }
   // Method 4: root prefix (no folder filter)
   try { const r = await cl.api.resources({ type: "upload", resource_type: "image", prefix: "my-girls/", max_results: 10 }); out["root_prefix"] = { count: r.resources?.length, ids: r.resources?.map((x:any)=>x.public_id) }; } catch(e:any){ out["root_prefix_err"] = String(e); }
-  // Method 5: resources_by_asset_folder("Icon") — upload preset may hardcode asset_folder=Icon
+  // Method 5: Cloudinary Search API (works with Dynamic Folder Mode)
   try {
-    const r = await (cl.api as any).resources_by_asset_folder("Icon", { max_results: 10, resource_type: "image" });
-    out["by_asset_folder_Icon"] = { count: r.resources?.length, sample: r.resources?.slice(0,3).map((x:any)=>({id:x.public_id,af:x.asset_folder,url:x.secure_url?.slice(0,80)})) };
-  } catch(e:any){ out["by_asset_folder_Icon_err"] = String(e); }
-  // Method 6: list ALL resources (no filter) to see anything at all
+    const r = await (cl as any).search.expression(`public_id:${folder}/*`).max_results(10).execute();
+    out["search_public_id"] = { count: r.resources?.length, sample: r.resources?.slice(0,3).map((x:any)=>({id:x.public_id,af:x.asset_folder})) };
+  } catch(e:any){ out["search_public_id_err"] = String(e); }
+  // Method 6: Search API by asset_folder
   try {
-    const r = await cl.api.resources({ type: "upload", resource_type: "image", max_results: 10 });
-    out["all_resources"] = { count: r.resources?.length, sample: r.resources?.slice(0,3).map((x:any)=>({id:x.public_id,af:x.asset_folder,url:x.secure_url?.slice(0,80)})) };
-  } catch(e:any){ out["all_resources_err"] = String(e); }
+    const r = await (cl as any).search.expression(`asset_folder:${folder}`).max_results(10).execute();
+    out["search_asset_folder"] = { count: r.resources?.length, sample: r.resources?.slice(0,3).map((x:any)=>({id:x.public_id,af:x.asset_folder})) };
+  } catch(e:any){ out["search_asset_folder_err"] = String(e); }
+  // Method 7: Search API — find everything, no filter
+  try {
+    const r = await (cl as any).search.expression('resource_type:image').max_results(5).execute();
+    out["search_all"] = { count: r.resources?.length, sample: r.resources?.slice(0,3).map((x:any)=>({id:x.public_id,af:x.asset_folder})) };
+  } catch(e:any){ out["search_all_err"] = String(e); }
   res.json(out);
 });
 
