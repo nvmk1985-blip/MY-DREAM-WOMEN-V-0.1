@@ -1,7 +1,36 @@
 import { Router } from "express";
 import { v2 as cloudinary } from "cloudinary";
+import * as fs from "fs";
+import * as path from "path";
 
 const router = Router();
+
+// ── Server-side Upload Track Store ───────────────────────────────────────────
+// Admin API listing fails in Dynamic Folder Mode → use this as source of truth.
+// Persists to disk so photos survive server restarts.
+const TRACKS_FILE = path.join(process.cwd(), "cloudinary-tracks.json");
+type TrackEntry = { url: string; public_id: string; created_at: string };
+const trackStore = new Map<string, TrackEntry[]>();
+
+function loadTracks() {
+  try {
+    if (fs.existsSync(TRACKS_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(TRACKS_FILE, "utf-8")) as Record<string, TrackEntry[]>;
+      for (const [folder, entries] of Object.entries(raw)) trackStore.set(folder, entries);
+    }
+  } catch {}
+}
+
+function saveTracks() {
+  try {
+    const data: Record<string, TrackEntry[]> = {};
+    for (const [k, v] of trackStore) data[k] = v;
+    fs.mkdirSync(path.dirname(TRACKS_FILE), { recursive: true });
+    fs.writeFileSync(TRACKS_FILE, JSON.stringify(data), "utf-8");
+  } catch {}
+}
+
+loadTracks();
 
 function cfg() {
   cloudinary.config({
@@ -70,9 +99,41 @@ router.post("/cloudinary/upload", async (req, res) => {
   }
 });
 
+// POST /cloudinary/track — mobile app calls this after each successful direct upload
+router.post("/cloudinary/track", (req, res) => {
+  try {
+    const { folder, public_id, url, created_at } = req.body as {
+      folder: string; public_id: string; url: string; created_at?: string;
+    };
+    if (!folder || !public_id || !url) { res.status(400).json({ error: "folder, public_id, url required" }); return; }
+    const entry: TrackEntry = { url, public_id, created_at: created_at || new Date().toISOString() };
+    const existing = trackStore.get(folder) || [];
+    // Avoid duplicates
+    if (!existing.find(e => e.public_id === public_id)) {
+      existing.unshift(entry);
+      trackStore.set(folder, existing);
+      saveTracks();
+    }
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message });
+  }
+});
+
+// GET /cloudinary/list — reads from track store first (reliable), falls back to admin API
 router.get("/cloudinary/list", async (req, res) => {
   try {
     const folder = (req.query["folder"] as string) || "my-girls";
+
+    // Primary: track store (populated by POST /cloudinary/track)
+    const tracked = trackStore.get(folder) || [];
+    if (tracked.length > 0) {
+      const images = tracked.map(t => ({ url: t.url, public_id: t.public_id, created_at: t.created_at }));
+      res.json({ images, source: "track" });
+      return;
+    }
+
+    // Fallback: Cloudinary admin API (works only if credentials match the upload cloud)
     const cl = cfg();
     let resources: any[] = [];
     try {
@@ -85,17 +146,10 @@ router.get("/cloudinary/list", async (req, res) => {
         if (r2?.resources?.length) resources = r2.resources;
       } catch {}
     }
-    if (resources.length === 0) {
-      try {
-        const r3 = await cl.api.resources({ asset_folder: folder, max_results: 50, resource_type: "image" } as any);
-        if (r3?.resources?.length) resources = r3.resources;
-      } catch {}
-    }
     const images = resources.map((r: any) => ({
-      url: r.secure_url, public_id: r.public_id,
-      width: r.width, height: r.height, created_at: r.created_at,
+      url: r.secure_url, public_id: r.public_id, created_at: r.created_at,
     }));
-    res.json({ images });
+    res.json({ images, source: "admin_api" });
   } catch (err: any) {
     req.log.error({ err }, "Cloudinary list failed");
     res.status(500).json({ error: err?.message || "List failed" });
@@ -106,27 +160,39 @@ router.get("/cloudinary/list", async (req, res) => {
 router.get("/cloudinary/subfolders", async (req, res) => {
   try {
     const folder = (req.query["folder"] as string) || "my-girls";
-    const cl = cfg();
+    const depth = folder.split('/').length;
     let folderNames: string[] = [];
-    // Method 1: Cloudinary sub_folders Admin API
-    try {
-      const r = await (cl.api as any).sub_folders(folder);
-      if (r?.folders?.length) {
-        folderNames = r.folders.map((f: any) => f.name ?? (f.path ?? '').split('/').pop() ?? String(f));
+
+    // Primary: extract from track store (most reliable)
+    const seen = new Set<string>();
+    for (const trackedFolder of trackStore.keys()) {
+      if (trackedFolder.startsWith(folder + "/")) {
+        const parts = trackedFolder.split('/');
+        if (parts.length > depth) seen.add(parts[depth]);
       }
-    } catch {}
-    // Method 2: Fallback — extract from resource public_ids
+    }
+    folderNames = [...seen];
+
+    // Fallback: Cloudinary admin APIs (may return 0 in dynamic folder mode)
     if (folderNames.length === 0) {
+      const cl = cfg();
       try {
-        const depth = folder.split('/').length;
-        const r = await cl.api.resources({ type: "upload", resource_type: "image", prefix: folder + "/", max_results: 500 });
-        const seen = new Set<string>();
-        for (const item of r.resources || []) {
-          const parts = (item.public_id as string).split('/');
-          if (parts.length > depth) seen.add(parts[depth]);
+        const r = await (cl.api as any).sub_folders(folder);
+        if (r?.folders?.length) {
+          folderNames = r.folders.map((f: any) => f.name ?? (f.path ?? '').split('/').pop() ?? String(f));
         }
-        folderNames = [...seen];
       } catch {}
+      if (folderNames.length === 0) {
+        try {
+          const r = await cl.api.resources({ type: "upload", resource_type: "image", prefix: folder + "/", max_results: 500 });
+          const s2 = new Set<string>();
+          for (const item of r.resources || []) {
+            const parts = (item.public_id as string).split('/');
+            if (parts.length > depth) s2.add(parts[depth]);
+          }
+          folderNames = [...s2];
+        } catch {}
+      }
     }
     res.json({ folders: folderNames });
   } catch (err: any) {
@@ -176,21 +242,16 @@ router.get("/cloudinary/debug-detail", async (req, res) => {
   try { const r = await (cl.api as any).resources({ asset_folder: folder, max_results: 10, resource_type: "image" }); out["asset_folder_param"] = { count: r.resources?.length, ids: r.resources?.map((x:any)=>x.public_id) }; } catch(e:any){ out["asset_folder_param_err"] = e?.message; }
   // Method 4: root prefix (no folder filter)
   try { const r = await cl.api.resources({ type: "upload", resource_type: "image", prefix: "my-girls/", max_results: 10 }); out["root_prefix"] = { count: r.resources?.length, ids: r.resources?.map((x:any)=>x.public_id) }; } catch(e:any){ out["root_prefix_err"] = String(e); }
-  // Method 5: Cloudinary Search API (works with Dynamic Folder Mode)
-  try {
-    const r = await (cl as any).search.expression(`public_id:${folder}/*`).max_results(10).execute();
-    out["search_public_id"] = { count: r.resources?.length, sample: r.resources?.slice(0,3).map((x:any)=>({id:x.public_id,af:x.asset_folder})) };
-  } catch(e:any){ out["search_public_id_err"] = String(e); }
-  // Method 6: Search API by asset_folder
-  try {
-    const r = await (cl as any).search.expression(`asset_folder:${folder}`).max_results(10).execute();
-    out["search_asset_folder"] = { count: r.resources?.length, sample: r.resources?.slice(0,3).map((x:any)=>({id:x.public_id,af:x.asset_folder})) };
-  } catch(e:any){ out["search_asset_folder_err"] = String(e); }
-  // Method 7: Search API — find everything, no filter
-  try {
-    const r = await (cl as any).search.expression('resource_type:image').max_results(5).execute();
-    out["search_all"] = { count: r.resources?.length, sample: r.resources?.slice(0,3).map((x:any)=>({id:x.public_id,af:x.asset_folder})) };
-  } catch(e:any){ out["search_all_err"] = String(e); }
+  // Method 5: type=authenticated
+  try { const r = await cl.api.resources({ type: "authenticated", resource_type: "image", max_results: 10 }); out["type_authenticated"] = { count: r.resources?.length }; } catch(e:any){ out["type_authenticated_err"] = String(e); }
+  // Method 6: type=private
+  try { const r = await cl.api.resources({ type: "private", resource_type: "image", max_results: 10 }); out["type_private"] = { count: r.resources?.length }; } catch(e:any){ out["type_private_err"] = String(e); }
+  // Method 7: sub_folders API
+  try { const r = await (cl.api as any).sub_folders("my-girls"); out["sub_folders_my_girls"] = r; } catch(e:any){ out["sub_folders_err"] = String(e); }
+  // Method 8: root sub_folders
+  try { const r = await (cl.api as any).root_folders(); out["root_folders"] = { count: r.folders?.length, names: r.folders?.map((f:any)=>f.name) }; } catch(e:any){ out["root_folders_err"] = String(e); }
+  // Method 9: account usage / resources count
+  try { const r = await cl.api.usage(); out["usage"] = { resources: r.resources, plan: r.plan }; } catch(e:any){ out["usage_err"] = String(e); }
   res.json(out);
 });
 
@@ -211,7 +272,15 @@ router.delete("/cloudinary/delete", async (req, res) => {
   try {
     const { public_id } = req.body as { public_id: string };
     if (!public_id) { res.status(400).json({ error: "public_id is required" }); return; }
-    await cfg().uploader.destroy(public_id);
+    // Remove from track store
+    let changed = false;
+    for (const [folder, entries] of trackStore) {
+      const filtered = entries.filter(e => e.public_id !== public_id);
+      if (filtered.length !== entries.length) { trackStore.set(folder, filtered); changed = true; }
+    }
+    if (changed) saveTracks();
+    // Also delete from Cloudinary (best-effort)
+    try { await cfg().uploader.destroy(public_id); } catch {}
     res.json({ success: true });
   } catch (err: any) {
     req.log.error({ err }, "Cloudinary delete failed");

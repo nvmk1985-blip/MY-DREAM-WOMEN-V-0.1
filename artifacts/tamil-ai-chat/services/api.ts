@@ -418,6 +418,22 @@ export async function listCloudinaryImages(
 }
 
 
+// Call this after every successful direct-to-Cloudinary upload.
+// Server stores the metadata so photos survive app reinstall.
+export async function trackCloudinaryUpload(
+  folder: string,
+  public_id: string,
+  url: string,
+): Promise<void> {
+  try {
+    await fetch(`${REPLIT_API}/api/cloudinary/track`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder, public_id, url, created_at: new Date().toISOString() }),
+    });
+  } catch { /* fire-and-forget — upload already succeeded */ }
+}
+
 export async function listCloudinarySubfolders(folder: string): Promise<string[]> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
