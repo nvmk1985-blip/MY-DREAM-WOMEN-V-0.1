@@ -134,6 +134,18 @@ router.get("/cloudinary/subfolders", async (req, res) => {
   }
 });
 
+// Shows which Cloudinary account the admin API is actually authenticated as
+router.get("/cloudinary/debug-account", async (req, res) => {
+  try {
+    const cl = cfg();
+    const usage = await cl.api.usage();
+    const ping  = await cl.api.ping();
+    res.json({ status: ping?.status, cloud_name: process.env["CLOUDINARY_CLOUD_NAME"], usage_plan: usage?.plan ?? "n/a", resources: usage?.resources ?? 0 });
+  } catch(e: any) {
+    res.status(500).json({ error: e?.message });
+  }
+});
+
 // Detailed debug: tries all 4 admin API methods and reports each result
 router.get("/cloudinary/debug-detail", async (req, res) => {
   const folder = (req.query["folder"] as string) || "my-girls/test_char/test_style";
