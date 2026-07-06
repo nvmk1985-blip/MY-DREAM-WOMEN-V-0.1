@@ -136,14 +136,27 @@ router.get("/cloudinary/subfolders", async (req, res) => {
 
 // Shows which Cloudinary account the admin API is actually authenticated as
 router.get("/cloudinary/debug-account", async (req, res) => {
+  const result: Record<string,any> = {
+    cloud_name: process.env["CLOUDINARY_CLOUD_NAME"] ?? null,
+    api_key_set: !!(process.env["API_KEY"] || process.env["CLOUDINARY_API_KEY"]),
+    api_secret_set: !!(process.env["API_SECRET"] || process.env["CLOUDINARY_API_SECRET"]),
+  };
+  try {
+    const cl = cfg();
+    const ping = await cl.api.ping();
+    result["ping"] = ping;
+  } catch(e: any) {
+    result["ping_error"] = String(e);
+  }
   try {
     const cl = cfg();
     const usage = await cl.api.usage();
-    const ping  = await cl.api.ping();
-    res.json({ status: ping?.status, cloud_name: process.env["CLOUDINARY_CLOUD_NAME"], usage_plan: usage?.plan ?? "n/a", resources: usage?.resources ?? 0 });
+    result["resources_count"] = usage?.resources;
+    result["plan"] = usage?.plan;
   } catch(e: any) {
-    res.status(500).json({ error: e?.message });
+    result["usage_error"] = String(e);
   }
+  res.json(result);
 });
 
 // Detailed debug: tries all 4 admin API methods and reports each result
