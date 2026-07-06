@@ -134,6 +134,26 @@ router.get("/cloudinary/subfolders", async (req, res) => {
   }
 });
 
+// Detailed debug: tries all 4 admin API methods and reports each result
+router.get("/cloudinary/debug-detail", async (req, res) => {
+  const folder = (req.query["folder"] as string) || "my-girls/test_char/test_style";
+  const cl = cfg();
+  const out: Record<string, any> = { folder, env: {
+    cloud_name: process.env["CLOUDINARY_CLOUD_NAME"] ?? null,
+    api_key_set: !!(process.env["API_KEY"] || process.env["CLOUDINARY_API_KEY"]),
+    api_secret_set: !!(process.env["API_SECRET"] || process.env["CLOUDINARY_API_SECRET"]),
+  }};
+  // Method 1: prefix
+  try { const r = await cl.api.resources({ type: "upload", resource_type: "image", prefix: folder + "/", max_results: 10 }); out["prefix"] = { count: r.resources?.length, ids: r.resources?.map((x:any)=>x.public_id) }; } catch(e:any){ out["prefix_err"] = e?.message; }
+  // Method 2: resources_by_asset_folder
+  try { const r = await (cl.api as any).resources_by_asset_folder(folder, { max_results: 10, resource_type: "image" }); out["by_asset_folder"] = { count: r.resources?.length, ids: r.resources?.map((x:any)=>x.public_id) }; } catch(e:any){ out["by_asset_folder_err"] = e?.message; }
+  // Method 3: asset_folder param
+  try { const r = await (cl.api as any).resources({ asset_folder: folder, max_results: 10, resource_type: "image" }); out["asset_folder_param"] = { count: r.resources?.length, ids: r.resources?.map((x:any)=>x.public_id) }; } catch(e:any){ out["asset_folder_param_err"] = e?.message; }
+  // Method 4: root prefix (no folder filter)
+  try { const r = await cl.api.resources({ type: "upload", resource_type: "image", prefix: "my-girls/", max_results: 10 }); out["root_prefix"] = { count: r.resources?.length, ids: r.resources?.map((x:any)=>x.public_id) }; } catch(e:any){ out["root_prefix_err"] = e?.message; }
+  res.json(out);
+});
+
 router.get("/cloudinary/debug-all", async (req, res) => {
   try {
     const cl = cfg();
